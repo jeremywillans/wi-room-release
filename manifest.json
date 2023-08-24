@@ -1,0 +1,146 @@
+{
+  "id": "35dd9789-d326-4082-bbec-178a961c5af5",
+  "manifestVersion": 1,
+  "displayName": "Room Release",
+  "vendor": "Jeremy Willans",
+  "email": "jwillans@cisco.com",
+  "description": "Room Release is a Workspace Integration designed to automatically release a room booking based on occupancy metrics from the Cisco codec.",
+  "descriptionUrl": "https://github.com/jeremywillans/wi-room-release",
+  "availability": "org_private",
+  "tocUrl": "",
+  "apiAccess": [
+    {
+      "scope": "spark-admin:devices_read",
+      "access": "required",
+      "role": "id_readonly_admin"
+    },
+    {
+      "scope": "spark-admin:workspaces_read",
+      "access": "required",
+      "role": "id_readonly_admin"
+    },
+    {
+      "scope": "spark:xapi_statuses",
+      "access": "required"
+    },
+    {
+      "scope": "spark:xapi_commands",
+      "access": "required"
+    },
+    {
+      "scope": "spark-admin:devices_write",
+      "access": "required"
+    }
+  ],
+  "xapiAccess": {
+    "status": [
+      {
+        "path": "RoomAnalytics.PeopleCount.Current",
+        "access": "required"
+      },
+      {
+        "path": "RoomAnalytics.PeoplePresence",
+        "access": "required"
+      },
+      {
+        "path": "RoomAnalytics.UltrasoundPresence",
+        "access": "required"
+      },
+      {
+        "path": "RoomAnalytics.Sound.Level.A",
+        "access": "required"
+      },
+      {
+        "path": "SystemUnit.State.NumberOfActiveCalls",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.Current.Id",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.Availability.Status",
+        "access": "required"
+      },
+      {
+        "path": "SystemUnit.State.System",
+        "access": "required"
+      },
+      {
+        "path": "SystemUnit.ProductPlatform",
+        "access": "required"
+      },
+      {
+        "path": "Conference.Presentation.*",
+        "access": "required"
+      }
+    ],
+    "commands": [
+      {
+        "path": "UserInterface.Message.Alert.Display",
+        "access": "required"
+      },
+      {
+        "path": "UserInterface.Message.Prompt.Display",
+        "access": "required"
+      },
+      {
+        "path": "UserInterface.Message.TextLine.Display",
+        "access": "required"
+      },
+      {
+        "path": "UserInterface.Message.TextLine.Clear",
+        "access": "required"
+      },
+      {
+        "path": "UserInterface.Message.Prompt.Clear",
+        "access": "required"
+      },
+      {
+        "path": "Audio.Sound.Play",
+        "access": "required"
+      },
+      {
+        "path": "Audio.Sound.Stop",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.Get",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.Respond",
+        "access": "required"
+      }
+    ],
+    "events": [
+      {
+        "path": "UserInterface.Extensions.*",
+        "access": "required"
+      },
+      {
+        "path": "UserInterface.Message.Prompt.Response",
+        "access": "required"
+      },
+      {
+        "path": "BootEvent",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.Start",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.ExtensionRequested",
+        "access": "required"
+      },
+      {
+        "path": "Bookings.End",
+        "access": "required"
+      }
+    ]
+  },
+  "provisioning": {
+    "type": "manual"
+  }
+}
