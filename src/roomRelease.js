@@ -8,6 +8,7 @@ const logger = require('./logger')('roomRelease');
 
 // Process ENV Parameters
 const e = cleanEnv(process.env, {
+  LOG_DETAILED: bool({ default: false, devDefault: true }),
   // Occupancy Detections
   RR_USE_SOUND: bool({ default: false }),
   RR_USE_ULTRASOUND: bool({ default: false }),
@@ -30,7 +31,6 @@ const e = cleanEnv(process.env, {
   RR_TEST_MODE: bool({ default: false }),
   RR_PlAY_ANNOUNCEMENT: bool({ default: true }),
   RR_FEEDBACK_ID: str({ default: 'alertResponse' }),
-  DEBUG_MODE: bool({ default: true }),
 });
 
 // Define Room Release options from ENV Parameters
@@ -61,7 +61,7 @@ const rrOptions = {
   testMode: e.RR_TEST_MODE, // used for testing, prevents the booking from being removed
   playAnnouncement: e.RR_PlAY_ANNOUNCEMENT, // Play announcement tone during check in prompt
   feedbackId: e.RR_FEEDBACK_ID, // identifier assigned to prompt response
-  debugMode: e.DEBUG_MODE, // Enable debug logging
+  logDetailed: e.LOG_DETAILED, // enable detailed logging
 };
 
 // Enable Ultrasound if set to required (and not enabled)
@@ -102,17 +102,27 @@ class RoomRelease {
 
   // Display check in prompt and play announcement tone
   promptUser() {
-    this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Display', {
-      Title: 'Unoccupied Room',
-      Text: 'Please Check-In below to retain this Room Booking.',
-      FeedbackId: this.feedbackId,
-      'Option.1': 'Check-In',
-    }).catch((error) => { logger.error(`${this.id}: ${error.message}`); });
+    try {
+      this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Display', {
+        Title: 'Unoccupied Room',
+        Text: 'Please Check-In below to retain this Room Booking.',
+        FeedbackId: this.feedbackId,
+        'Option.1': 'Check-In',
+      });
+    } catch (error) {
+      logger.error(`${this.id}: Unable to display Check-in prompt`);
+      logger.debug(`${this.id}: ${error.message}`);
+    }
 
     if (!this.o.playAnnouncement) return;
-    this.xapi.command(this.deviceId, 'Audio.Sound.Play', {
-      Loop: 'Off', Sound: 'Announcement',
-    }).catch((error) => { logger.error(`${this.id}: ${error.message}`); });
+    try {
+      this.xapi.command(this.deviceId, 'Audio.Sound.Play', {
+        Loop: 'Off', Sound: 'Announcement',
+      });
+    } catch (error) {
+      logger.error(`${this.id}: Unable to play announcement tone`);
+      logger.debug(`${this.id}: ${error.message}`);
+    }
   }
 
   // OSD countdown message for check in
@@ -132,8 +142,12 @@ class RoomRelease {
       msgBody.y = 2000;
       msgBody.x = 5000;
     }
-    this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Display', msgBody)
-      .catch((error) => { logger.error(`${this.id}: ${error.message}`); });
+    try {
+      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Display', msgBody);
+    } catch (error) {
+      logger.error(`${this.id}: Unable to display Check-in prompt`);
+      logger.debug(`${this.id}: ${error.message}`);
+    }
 
     // Forced message display every 5 seconds
     if (this.alertDuration % 5 === 0) {
@@ -167,13 +181,14 @@ class RoomRelease {
       };
       await this.xapi.config.setMany(this.deviceId, configs);
     } catch (error) {
-      logger.warn(error.message);
+      logger.error(`${this.id}: Unable to configure codec`);
+      logger.debug(`${this.id}: ${error.message}`);
     }
   }
 
   // Determine if room is occupied based on enabled detections
   isRoomOccupied() {
-    if (this.o.debugMode) {
+    if (this.o.logDetailed) {
       let message = `${this.id}: Presence: ${this.metrics.peoplePresence} | Count: ${this.metrics.peopleCount}`;
       // eslint-disable-next-line no-nested-ternary
       message += ` | [${this.o.requireUltrasound ? 'R' : this.o.requireUltrasound ? 'X' : ' '}] Ultrasound: ${this.metrics.ultrasound}`;
@@ -193,13 +208,13 @@ class RoomRelease {
       currentStatus = this.metrics.peoplePresence && this.metrics.ultrasound;
     }
 
-    if (this.o.debugMode) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
+    if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
     return currentStatus;
   }
 
   // Countdown timer before meeting decline
   startCountdown() {
-    if (this.o.debugMode) logger.debug(`${this.id}: Start countdown initiated`);
+    if (this.o.logDetailed) logger.debug(`${this.id}: Start countdown initiated`);
     this.countdownActive = true;
     this.promptUser();
 
@@ -217,7 +232,7 @@ class RoomRelease {
         this.processOccupancy();
         return;
       }
-      if (this.o.debugMode) logger.debug(`${this.id}: Initiate Booking removal from device.`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Initiate Booking removal from device.`);
       this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Clear', { FeedbackId: this.feedbackId });
       this.xapi.command(this.deviceId, 'Audio.Sound.Stop');
       this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear');
@@ -231,26 +246,26 @@ class RoomRelease {
         bookingId = await this.xapi.status.get(this.deviceId, 'Bookings.Current.Id');
         // use booking id to retrieve booking data, specifically meeting id
         booking = await this.xapi.command(this.deviceId, 'Bookings.Get', { Id: bookingId });
-        if (this.o.debugMode) logger.debug(`${this.id}: ${bookingId} contains ${booking.Booking.MeetingId}`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: ${bookingId} contains ${booking.Booking.MeetingId}`);
       } catch (error) {
         logger.error(`${this.id}: Unable to retrieve meeting info for ${bookingId}`);
-        if (this.o.debugMode) logger.debug(`${this.id}: ${error.message}`);
+        logger.debug(`${this.id}: ${error.message}`);
         return;
       }
       try {
         if (this.o.testMode) {
-          if (this.o.debugMode) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
+          if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
         } else {
           // attempt decline meeting to control hub
           await this.xapi.command(this.deviceId, 'Bookings.Respond', {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
-          if (this.o.debugMode) logger.debug(`${this.id}: Booking declined.`);
+          if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
         }
       } catch (error) {
         logger.error(`${this.id}: Unable to respond to meeting ${booking.Booking.MeetingId}`);
-        if (this.o.debugMode) logger.debug(`${this.id}: ${error.message}`);
+        logger.debug(`${this.id}: ${error.message}`);
       }
       this.bookingIsActive = false;
       this.lastFullTimestamp = 0;
@@ -263,7 +278,7 @@ class RoomRelease {
   getData(command) {
     return this.xapi.status.get(this.deviceId, command).catch((error) => {
       logger.warn(`${this.id}: Unable to perform command: ${command}`);
-      if (this.o.debugMode) logger.debug(`${this.id}: ${error.message}`);
+      logger.debug(`${this.id}: ${error.message}`);
       return -1;
     });
   }
@@ -313,7 +328,7 @@ class RoomRelease {
       if (processResults) this.processOccupancy();
     } catch (error) {
       logger.warn(`${this.id}: Unable to process occupancy metrics from Codec`);
-      if (this.o.debugMode) logger.debug(`${this.id}: ${error.message}`);
+      logger.debug(`${this.id}: ${error.message}`);
     }
   }
 
@@ -323,17 +338,17 @@ class RoomRelease {
     if (this.isRoomOccupied()) {
       // is room newly occupied
       if (this.lastFullTimestamp === 0) {
-        if (this.o.debugMode) logger.debug(`${this.id}: Room occupancy detected - updating full timestamp...`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: Room occupancy detected - updating full timestamp...`);
         this.lastFullTimestamp = Date.now();
         this.lastEmptyTimestamp = 0;
       // has room been occupied longer than consideredOccupied
       } else if (Date.now() > (this.lastFullTimestamp + (this.o.consideredOccupied * 60000))) {
-        if (this.o.debugMode) logger.debug(`${this.id}: consideredOccupied reached - room considered occupied`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: consideredOccupied reached - room considered occupied`);
         this.roomIsEmpty = false;
         this.lastFullTimestamp = Date.now();
         if (this.o.occupiedStopChecks) {
           // stop further checks as room is considered occupied
-          if (this.o.debugMode) logger.debug(`${this.id}: future checks stopped for this booking`);
+          if (this.o.logDetailed) logger.debug(`${this.id}: future checks stopped for this booking`);
           this.bookingIsActive = false;
           this.listenerShouldCheck = false;
           clearInterval(this.periodicUpdate);
@@ -341,13 +356,13 @@ class RoomRelease {
       }
     // is room newly empty
     } else if (this.lastEmptyTimestamp === 0) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Room empty detected - updating empty timestamp...`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Room empty detected - updating empty timestamp...`);
       this.lastEmptyTimestamp = Date.now();
       this.lastFullTimestamp = 0;
     // has room been empty longer than emptyBeforeRelease
     } else if (Date.now() > (this.lastEmptyTimestamp + (this.o.emptyBeforeRelease * 60000))
       && !this.roomIsEmpty) {
-      if (this.o.debugMode) logger.debug(`${this.id}: emptyBeforeRelease reached - room considered empty`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: emptyBeforeRelease reached - room considered empty`);
       this.roomIsEmpty = true;
     }
 
@@ -355,7 +370,7 @@ class RoomRelease {
     if (this.roomIsEmpty && !this.countdownActive) {
       // check we have not yet reached the initial delay
       if (Date.now() < this.initialDelay) {
-        if (this.o.debugMode) logger.debug(`${this.id}: Booking removal bypassed as meeting has not yet reached initial delay`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: Booking removal bypassed as meeting has not yet reached initial delay`);
         return;
       }
       // pre-countdown metrics collection
@@ -385,12 +400,12 @@ class RoomRelease {
         duration = ((Number(t.SecondsUntilEnd) + Number(t.SecondsSinceStart)) / 3600).toFixed(2);
       } catch (error) {
         logger.warn(`${this.id}: Unable to parse Meeting Length`);
-        if (this.o.debugMode) logger.debug(`${this.id}: ${error.message}`);
+        logger.debug(`${this.id}: ${error.message}`);
       }
       // do not process meetings if it equals/exceeds defined meeting length
-      if (this.o.debugMode) logger.debug(`${this.id}: calculated meeting length: ${duration}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: calculated meeting length: ${duration}`);
       if (duration >= this.o.ignoreLongerThan) {
-        if (this.o.debugMode) logger.debug(`${this.id}: meeting ignored as equal/longer than ${this.o.ignoreLongerThan} hours`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: meeting ignored as equal/longer than ${this.o.ignoreLongerThan} hours`);
         this.listenerShouldCheck = false;
         this.bookingIsActive = false;
         return;
@@ -404,7 +419,7 @@ class RoomRelease {
 
       // Update checks to periodically validate room status.
       this.periodicUpdate = setInterval(() => {
-        if (this.o.debugMode) logger.debug(`${this.id}: initiating periodic processing of occupancy metrics`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: initiating periodic processing of occupancy metrics`);
         this.getMetrics();
       }, (this.o.periodicInterval * 60000) + 1000);
     } else {
@@ -420,12 +435,12 @@ class RoomRelease {
 
   handlePromptResponse(event) {
     if (event.FeedbackId === this.feedbackId && event.OptionId === 1) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Local Check-in performed from Touch Panel`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Local Check-in performed from Touch Panel`);
       this.clearAlerts();
       this.lastFullTimestamp = Date.now();
       this.lastEmptyTimestamp = 0;
       if (this.o.buttonStopChecks) {
-        if (this.o.debugMode) logger.debug(`${this.id}: future checks stopped for this booking`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: future checks stopped for this booking`);
         this.bookingIsActive = false;
         this.listenerShouldCheck = false;
         clearInterval(this.periodicUpdate);
@@ -452,7 +467,7 @@ class RoomRelease {
 
   handleActiveCall(result) {
     if (this.bookingIsActive) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Number of active calls: ${result}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Number of active calls: ${result}`);
       const inCall = Number(result) > 0;
       this.metrics.inCall = inCall;
 
@@ -467,7 +482,7 @@ class RoomRelease {
 
   handlePeoplePresence(result) {
     if (this.bookingIsActive) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Presence: ${result}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Presence: ${result}`);
       const people = result === 'Yes';
       this.metrics.peoplePresence = people;
 
@@ -482,7 +497,7 @@ class RoomRelease {
 
   handleUltrasoundPresence(result) {
     if (this.bookingIsActive) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Ultrasound: ${result}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Ultrasound: ${result}`);
       const ultrasound = result === 'Yes';
       this.metrics.ultrasound = ultrasound;
 
@@ -497,7 +512,7 @@ class RoomRelease {
 
   handlePeopleCount(result) {
     if (this.bookingIsActive) {
-      if (this.o.debugMode) logger.debug(`${this.id}: People count: ${result}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: People count: ${result}`);
       const people = Number(result);
       this.metrics.peopleCount = people === -1 ? 0 : people;
 
@@ -513,7 +528,7 @@ class RoomRelease {
   handleSoundDetection(result) {
     // Only process when enabled to reduce log noise
     if (this.bookingIsActive && this.o.detectSound) {
-      if (this.o.debugMode) logger.debug(`${this.id}: Sound level: ${result}`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Sound level: ${result}`);
       const level = Number(result);
       this.metrics.presenceSound = level > this.o.soundLevel;
 
@@ -529,10 +544,10 @@ class RoomRelease {
   handlePresentationLocalInstance(result) {
     if (this.bookingIsActive) {
       if (result.ghost) {
-        if (this.o.debugMode) logger.debug(`${this.id}: Presentation stopped`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: Presentation stopped`);
         this.metrics.sharing = false;
       } else {
-        if (this.o.debugMode) logger.debug(`${this.id}: Presentation started: ${result}`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: Presentation started: ${result}`);
         this.metrics.sharing = true;
       }
 
@@ -547,7 +562,7 @@ class RoomRelease {
 
   handleInteraction() {
     if (this.bookingIsActive && this.o.detectInteraction) {
-      if (this.o.debugMode) logger.debug(`${this.id}: UI interaction detected`);
+      if (this.o.logDetailed) logger.debug(`${this.id}: UI interaction detected`);
 
       this.clearAlerts();
       this.lastFullTimestamp = Date.now();

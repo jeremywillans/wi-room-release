@@ -11,7 +11,7 @@
 const wi = require('workspace-integrations');
 const { bootstrap } = require('global-agent');
 const schedule = require('node-schedule');
-const { cleanEnv, str, bool } = require('envalid');
+const { cleanEnv, str } = require('envalid');
 const logger = require('./src/logger')('app');
 const utils = require('./src/utils');
 const { RoomRelease } = require('./src/roomRelease');
@@ -22,7 +22,6 @@ const e = cleanEnv(process.env, {
   // Integration Options
   DEVICE_TAG: str({ default: 'wi-room-release' }),
   WI_LOGGING: str({ default: 'error' }),
-  DEBUG_MODE: bool({ default: true }),
   CLIENT_ID: str(),
   CLIENT_SECRET: str(),
   // Integration Credentials
@@ -65,7 +64,8 @@ async function processDevice(i, d, deviceId, deviceObj) {
       device = await i.devices.getDevice(deviceId);
     } catch (error) {
       logger.warn(`Unable to get device: ${utils.shortName(deviceId)}`);
-      if (e.DEBUG_MODE) logger.debug(error.message);
+      logger.debug(deviceId);
+      logger.debug(error.message);
       return;
     }
   }
@@ -90,7 +90,7 @@ async function processDevice(i, d, deviceId, deviceObj) {
     }
   } catch (error) {
     logger.warn(`${d[deviceId].id}: Unable to process Device!`);
-    if (e.DEBUG_MODE) logger.debug(error.message);
+    logger.debug(`${d[deviceId].id}: ${error.message}`);
   }
 }
 
@@ -122,7 +122,7 @@ async function processDevices(i, d) {
     });
   } catch (error) {
     logger.warn('Unable to process devices');
-    if (e.DEBUG_MODE) logger.debug(error.message);
+    logger.debug(error.message);
   }
 }
 
@@ -137,7 +137,7 @@ async function init(json) {
       wiConfig.activationCode = utils.parseJwt(e.CODE);
     } catch (error) {
       logger.error('Unable to decode token');
-      if (e.DEBUG_MODE) logger.debug(error.message);
+      logger.debug(error.message);
       process.exit(1);
     }
   }
@@ -148,7 +148,7 @@ async function init(json) {
     logger.info('Integration activation successful!');
   } catch (error) {
     logger.error('Not able to connect to Integration');
-    if (e.DEBUG_MODE) logger.debug(error.message);
+    logger.debug(error.message);
     process.exit(1);
   }
 
@@ -257,7 +257,7 @@ async function init(json) {
     });
   } catch (error) {
     logger.warn('Error during device and subscription processing');
-    if (e.DEBUG_MODE) logger.debug(error.message);
+    logger.debug(error.message);
   }
 }
 
