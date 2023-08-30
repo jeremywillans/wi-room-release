@@ -15,6 +15,7 @@ const { cleanEnv, str, bool } = require('envalid');
 const logger = require('./src/logger')('app');
 const utils = require('./src/utils');
 const { RoomRelease } = require('./src/roomRelease');
+const { version } = require('./package.json');
 
 // Process ENV Parameters
 const e = cleanEnv(process.env, {
@@ -127,6 +128,7 @@ async function processDevices(i, d) {
 
 // Init integration
 async function init(json) {
+  logger.info(`Room Release Workspace Integration, v${version}`);
   let i;
   const d = {}; // Device Entities Object
   // Process integration credentials
