@@ -37,7 +37,7 @@ Periodic check of devices occurs every 30 minutes to detect if a new device is t
 1. Clone / Download repository
 2. Run `npm install` to add the require dependencies (ensure Node and NPM are installed)
 3. Create an `.env` file and include the required variables outlined below.
-- Recommend adding `WI_LOGGING=info`, `CONSOLE_LEVEL=debug` and `RR_TEST_MODE=true` during initial testing
+- Recommend adding `WI_LOGGING=info`, `CONSOLE_LEVEL=debug`, `LOG_DETAILED=true` and `RR_TEST_MODE=true` during initial testing
 4. Start the integration using `npm run start`
 5. Review the console logs to confirm no errors encountered
 
