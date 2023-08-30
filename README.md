@@ -1,5 +1,7 @@
 # wi-room-release
 
+## Room Release Workspace Integration
+
 Room Release is a Workspace Integration designed to automatically release a room booking based on occupancy metrics from the Cisco codec.
 
 This has been refactored from a per-device macro to instead run from a central location, ideally as a docker container, and leverages the Webex cloud xAPIs to manage and subscribe to events for your devices.
@@ -74,7 +76,7 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | **---**
 | DEVICE_TAG | no | string | `wi-room-release` | Device Tag used to determine which devices to process
 | **Logging Settings**
-| DEBUG_MODE | no | bool | `true` | Enable debug logging
+| LOG_DETAILED | no | bool | `true` | Enable detailed logging
 | CONSOLE_LEVEL | no | bool | `info` | Logging level exposed to console
 | APP_NAME | no | string | `wi-room-release` | App Name used for logging service
 | SYSLOG_ENABLED | no | bool | `false` | Enable external syslog server
@@ -118,4 +120,4 @@ In case you've found a bug, please [open an issue on GitHub](../../issues).
 
 ## Disclaimer
 
-This script is NOT guaranteed to be bug free and production quality.
+This application is provided as a sample only is NOT guaranteed to be bug free and production quality.
