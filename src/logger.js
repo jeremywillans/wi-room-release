@@ -6,8 +6,10 @@
 /* eslint-disable no-underscore-dangle */
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
+const { Syslog } = require('winston-syslog');
 const ms = require('ms');
-const { cleanEnv, str, bool } = require('envalid');
+// eslint-disable-next-line object-curly-newline
+const { cleanEnv, str, bool, num } = require('envalid');
 require('dotenv').config();
 
 let logger = {};
@@ -15,16 +17,18 @@ let logger = {};
 // Process ENV Parameters
 const env = cleanEnv(process.env, {
   // Logging Options
-  APP_NAME: str({ default: 'wi-room-release' }),
+  APP_NAME: str({ default: 'wi-teams-button' }),
+  SYSLOG_ENABLED: bool({ default: false }),
+  SYSLOG_HOST: str({ default: 'syslog' }),
+  SYSLOG_PORT: num({ default: 514 }),
+  SYSLOG_PROTOCOL: str({ default: 'udp4' }),
+  SYSLOG_SOURCE: str({ default: 'localhost' }),
   LOKI_ENABLED: bool({ default: false }),
   LOKI_HOST: str({ default: 'http://loki:3100' }),
   CONSOLE_LEVEL: str({ default: 'info' }),
 });
 
 const appName = env.APP_NAME;
-const lokiEnabled = env.LOKI_ENABLED;
-const lokiHost = env.LOKI_HOST;
-const consoleLevel = env.CONSOLE_LEVEL;
 
 const LOG_TIME_DIFF = Symbol('LOG_TIME_DIFF');
 // adds data to log event info object
@@ -53,6 +57,7 @@ function WinstonLogger(component) {
     app: appName,
   };
 
+  let destinations = 'Console';
   const transports = [
     // printing the logs to console
     new winston.transports.Console({
@@ -79,11 +84,34 @@ function WinstonLogger(component) {
           return `${timeString} ${res.level} ${res.label} ${res.message}`;
         }),
       ),
-      level: consoleLevel,
+      level: env.CONSOLE_LEVEL,
     }),
   ];
 
-  if (lokiEnabled) {
+  if (env.SYSLOG_ENABLED) {
+    destinations += ', Syslog';
+    transports.push(
+      // sending the logs to external syslog server
+      new Syslog({
+        format: winston.format.combine(
+          winston.format.errors({ stack: true }),
+          winston.format.label({
+            label: `[${appName}:${component}]`,
+          }),
+          winston.format.printf((res) => `${res.level} ${res.label} ${res.message}`),
+        ),
+        host: env.SYSLOG_HOST,
+        port: env.SYSLOG_PORT,
+        protocol: env.SYSLOG_PROTOCOL,
+        localhost: env.SYSLOG_SOURCE,
+        app_name: appName,
+        level: 'debug',
+      }),
+    );
+  }
+
+  if (env.LOKI_ENABLED) {
+    destinations += ', Loki';
     transports.push(
       // sending the logs to Loki which will be visualized by Grafana
       new LokiTransport({
@@ -94,7 +122,7 @@ function WinstonLogger(component) {
           }),
           winston.format.printf((res) => `${res.level} ${res.label} ${res.message}`),
         ),
-        host: lokiHost,
+        host: env.LOKI_HOST,
         labels,
         level: 'debug',
       }),
@@ -104,6 +132,13 @@ function WinstonLogger(component) {
   logger = winston.createLogger({
     transports,
   });
+
+  if (component === 'app') {
+    setTimeout(() => {
+      // added minor delay to show app log entry first
+      logger.info(`Logging destinations enabled: ${destinations}`);
+    }, 100);
+  }
 
   // Streaming allows it to stream the logs back from the defined transports
   logger.stream = {

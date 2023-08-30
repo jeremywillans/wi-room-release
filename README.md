@@ -77,6 +77,11 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | DEBUG_MODE | no | bool | `true` | Enable debug logging
 | CONSOLE_LEVEL | no | bool | `info` | Logging level exposed to console
 | APP_NAME | no | string | `wi-room-release` | App Name used for logging service
+| SYSLOG_ENABLED | no | bool | `false` | Enable external syslog server
+| SYSLOG_HOST | no | string | `syslog` | Destination host for syslog server
+| SYSLOG_PORT | no | num | `514` | Destination port for syslog server
+| SYSLOG_PROTOCOL | no | str | `udp4` | Destination protocol for syslog server
+| SYSLOG_SOURCE | no | str | `localhost` | Host to indicate that log messages are coming from
 | LOKI_ENABLED | no | bool | `false` | Enable external Loki logging server
 | LOKI_HOST| no | string | `http://loki:3100` | Destination host for Loki logging server
 | **HTTP Proxy**
