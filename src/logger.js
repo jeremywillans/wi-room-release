@@ -10,6 +10,7 @@ const { Syslog } = require('winston-syslog');
 const ms = require('ms');
 // eslint-disable-next-line object-curly-newline
 const { cleanEnv, str, bool, num } = require('envalid');
+const { name } = require('../package.json');
 require('dotenv').config();
 
 let logger = {};
@@ -17,7 +18,7 @@ let logger = {};
 // Process ENV Parameters
 const env = cleanEnv(process.env, {
   // Logging Options
-  APP_NAME: str({ default: 'wi-teams-button' }),
+  APP_NAME: str({ default: name }),
   SYSLOG_ENABLED: bool({ default: false }),
   SYSLOG_HOST: str({ default: 'syslog' }),
   SYSLOG_PORT: num({ default: 514 }),
