@@ -288,17 +288,14 @@ class RoomRelease {
     try {
       const results = await Promise.all([
         this.getData('SystemUnit.State.NumberOfActiveCalls'),
-        this.getData('RoomAnalytics.UltrasoundPresence'),
-        this.getData('RoomAnalytics.PeoplePresence'),
-        this.getData('RoomAnalytics.PeopleCount.Current'),
-        this.getData('RoomAnalytics.Sound.Level.A'),
+        this.getData('RoomAnalytics.*'),
       ]);
-      // process results
+
+      // evaluate the results
       const numCalls = Number(results[0]);
-      const ultrasound = results[1] === 'Yes';
-      const presence = results[2] === 'Yes';
-      const peopleCount = Number(results[3]);
-      const soundResult = Number(results[4]);
+      const presence = results[1].PeoplePresence === 'Yes';
+      const peopleCount = Number(results[1].PeopleCount.Current);
+      const soundResult = Number(results[1].Sound.Level.A);
 
       // test for local sharing xapi
       const sharing = await this.xapi.status.get(this.deviceId, 'Conference.Presentation.LocalInstance[*].SendingMode', true);
