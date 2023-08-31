@@ -21,9 +21,7 @@ Note: there is new a new parameter (`initialReleaseDelay`) allowing you to defin
 
 Additionally, there is built in functionality to ignore the release of larger bookings (duration adjustable), such as all day events which may not start on time.
 
-
-
-Periodic check of devices occurs every 30 minutes to detect if a new device is tagged, otherwise devices are processed on reboot.
+Periodic check of devices occurs every 30 minutes to detect if a new device is un/tagged, otherwise devices are processed on integration restart.
 
 ## Prerequisites
 
@@ -44,6 +42,7 @@ Periodic check of devices occurs every 30 minutes to detect if a new device is t
 ## Deployment (Docker)
 
 1. Build and Deploy Docker Container (or deploy to Cloud) - ensure you include the required variables outlined below.
+An example [docker-compose.yml](docker-compsose.yml) file has been included to sp
 - This integration does not require local device access as all communications are done over Cloud xAPI.
 
     ```
@@ -54,8 +53,6 @@ Periodic check of devices occurs every 30 minutes to detect if a new device is t
     ```
 
 2. Review the logs from the Integration output to confirm no errors encountered
-
-
 
 ### Environmental Variables
 
