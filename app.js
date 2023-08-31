@@ -231,12 +231,6 @@ async function init(json) {
       if (!rr) return;
       rr.handlePeoplePresence(result);
     });
-    // Process ultrasound detection
-    i.xapi.status.on('RoomAnalytics.UltrasoundPresence', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handleUltrasoundPresence(result);
-    });
     // Process presentation detection
     i.xapi.status.on('Conference.Presentation.LocalInstance', (deviceId, _path, result) => {
       const rr = d[deviceId];

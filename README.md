@@ -7,8 +7,7 @@ Room Release is a Workspace Integration designed to automatically release a room
 This has been refactored from a per-device macro to instead run from a central location, ideally as a docker container, and leverages the Webex cloud xAPIs to manage and subscribe to events for your devices.
 
 The following metrics can be used for this calculation
-- People Presence (Head Detection)
-- Room Ultrasound
+- People Presence
 - Sound Levels
 - Active Call
 - Presentation Sharing
@@ -21,7 +20,7 @@ Note: there is new a new parameter (`initialReleaseDelay`) allowing you to defin
 
 Additionally, there is built in functionality to ignore the release of larger bookings (duration adjustable), such as all day events which may not start on time.
 
-Periodic check of devices occurs every 30 minutes to detect if a new device is un/tagged, otherwise devices are processed on integration restart.
+Periodic check of devices occurs every 30 minutes (on the half/hour intervals) to detect if a new device is un/tagged, otherwise devices are re/processed on integration restart.
 
 ## Prerequisites
 
@@ -88,8 +87,6 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | GLOBAL_AGENT_NO_PROXY | no | string | ` ` | Comma Separated List of excluded proxy domains (Supports wildcards)
 | **Occupancy Detections**
 | RR_USE_SOUND | no | bool | `false` | Use sound level to consider room occupied (set level below)
-| RR_USE_ULTRASOUND | no | bool | `false` | Use Ultrasound for presence detection
-| RR_REQUIRE_ULTRASOUND | no | bool | `false` | Require Ultrasound detection (eg. glass walls)
 | RR_USE_ACTIVE_CALL | no | bool | `true` | Use active call for detection (inc airplay)
 | RR_USE_INTERACTION | no | bool | `true` | UI extensions (panel, button, etc) to detect presence.
 | RR_USE_PRESENTATION | no | bool | `true` | Use presentation sharing for detection

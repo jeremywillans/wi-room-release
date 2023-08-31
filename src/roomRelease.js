@@ -11,8 +11,6 @@ const e = cleanEnv(process.env, {
   LOG_DETAILED: bool({ default: false, devDefault: true }),
   // Occupancy Detections
   RR_USE_SOUND: bool({ default: false }),
-  RR_USE_ULTRASOUND: bool({ default: false }),
-  RR_REQUIRE_ULTRASOUND: bool({ default: false }),
   RR_USE_ACTIVE_CALL: bool({ default: true }),
   RR_USE_INTERACTION: bool({ default: true }),
   RR_USE_PRESENTATION: bool({ default: true }),
@@ -37,8 +35,6 @@ const e = cleanEnv(process.env, {
 const rrOptions = {
   // Occupancy Detections
   detectSound: e.RR_USE_SOUND, // Use sound level to consider room occupied (set level below)
-  detectUltrasound: e.RR_USE_ULTRASOUND, // Use Ultrasound for presence detection
-  requireUltrasound: e.RR_REQUIRE_ULTRASOUND, // Require Ultrasound detection (eg. glass walls)
   detectActiveCalls: e.RR_USE_ACTIVE_CALL, // Use active call for detection (inc airplay)
   detectInteraction: e.RR_USE_INTERACTION, // UI extensions (panel, button, etc) to detect presence.
   detectPresentation: e.RR_USE_PRESENTATION, // Use presentation sharing for detection
@@ -64,12 +60,6 @@ const rrOptions = {
   logDetailed: e.LOG_DETAILED, // enable detailed logging
 };
 
-// Enable Ultrasound if set to required (and not enabled)
-if (rrOptions.requireUltrasound && !rrOptions.detectUltrasound) {
-  logger.warn('Ultrasound required but disabled, activating...');
-  rrOptions.detectUltrasound = true;
-}
-
 // Room Release Class - Instantiated per Device
 class RoomRelease {
   constructor(i, id, deviceId) {
@@ -93,7 +83,6 @@ class RoomRelease {
     this.metrics = {
       peopleCount: 0,
       peoplePresence: false,
-      ultrasound: false,
       inCall: false,
       presenceSound: false,
       sharing: false,
@@ -190,23 +179,15 @@ class RoomRelease {
   isRoomOccupied() {
     if (this.o.logDetailed) {
       let message = `${this.id}: Presence: ${this.metrics.peoplePresence} | Count: ${this.metrics.peopleCount}`;
-      // eslint-disable-next-line no-nested-ternary
-      message += ` | [${this.o.requireUltrasound ? 'R' : this.o.requireUltrasound ? 'X' : ' '}] Ultrasound: ${this.metrics.ultrasound}`;
       message += ` | [${this.o.detectActiveCalls ? 'X' : ' '}] In Call: ${this.metrics.inCall}`;
       message += ` | [${this.o.detectSound ? 'X' : ' '}] Sound (> ${this.o.soundLevel}): ${this.metrics.presenceSound}`;
       message += ` | [${this.o.detectPresentation ? 'X' : ' '}] Share: ${this.metrics.sharing}`;
       logger.debug(message);
     }
-    let currentStatus = this.metrics.peoplePresence // People presence
+    const currentStatus = this.metrics.peoplePresence // People presence
       || (this.o.detectActiveCalls && this.metrics.inCall) // Active call detection
       || (this.o.detectSound && this.metrics.presenceSound) // Sound detection
-      || (this.o.detectPresentation && this.metrics.sharing) // Presentation detection
-      || (this.o.detectUltrasound && this.metrics.ultrasound); // Ultrasound detection
-
-    // If ultrasound is required, test against people presence status
-    if (this.o.requireUltrasound && this.metrics.peoplePresence) {
-      currentStatus = this.metrics.peoplePresence && this.metrics.ultrasound;
-    }
+      || (this.o.detectPresentation && this.metrics.sharing); // Presentation detection
 
     if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
     return currentStatus;
@@ -304,7 +285,6 @@ class RoomRelease {
       // Process people metrics
       this.metrics.peopleCount = peopleCount === -1 ? 0 : peopleCount;
       this.metrics.peoplePresence = presence;
-      this.metrics.ultrasound = ultrasound;
 
       // Process active calls
       if (numCalls > 0 && this.o.detectActiveCalls) {
@@ -484,21 +464,6 @@ class RoomRelease {
       this.metrics.peoplePresence = people;
 
       if (people) {
-        this.clearAlerts();
-      }
-      if (this.listenerShouldCheck) {
-        this.processOccupancy();
-      }
-    }
-  }
-
-  handleUltrasoundPresence(result) {
-    if (this.bookingIsActive) {
-      if (this.o.logDetailed) logger.debug(`${this.id}: Ultrasound: ${result}`);
-      const ultrasound = result === 'Yes';
-      this.metrics.ultrasound = ultrasound;
-
-      if (this.o.detectUltrasound && ultrasound) {
         this.clearAlerts();
       }
       if (this.listenerShouldCheck) {

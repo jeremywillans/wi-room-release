@@ -1,6 +1,6 @@
 {
   "id": "35dd9789-d326-4082-bbec-178a961c5af5",
-  "manifestVersion": 1,
+  "manifestVersion": 2,
   "displayName": "Room Release",
   "vendor": "Jeremy Willans",
   "email": "jwillans@cisco.com",
@@ -40,10 +40,6 @@
       },
       {
         "path": "RoomAnalytics.PeoplePresence",
-        "access": "required"
-      },
-      {
-        "path": "RoomAnalytics.UltrasoundPresence",
         "access": "required"
       },
       {
