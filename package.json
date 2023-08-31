@@ -1,7 +1,7 @@
 {
   "name": "wi-room-release",
   "version": "0.0.1",
-  "description": "Workspace Integration for Room Release",
+  "description": "Room Release Workspace Integration",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
