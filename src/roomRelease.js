@@ -4,7 +4,7 @@
 
 // eslint-disable-next-line object-curly-newline
 const { cleanEnv, str, bool, num } = require('envalid');
-const logger = require('./logger')('roomRelease');
+const logger = require('./logger')(__filename.slice(__dirname.length + 1, -3));
 
 // Process ENV Parameters
 const e = cleanEnv(process.env, {
