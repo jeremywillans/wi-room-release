@@ -8,7 +8,7 @@ const logger = require('./logger')(__filename.slice(__dirname.length + 1, -3));
 
 // Process ENV Parameters
 const e = cleanEnv(process.env, {
-  LOG_DETAILED: bool({ default: false, devDefault: true }),
+  LOG_DETAILED: bool({ default: true }),
   // Occupancy Detections
   RR_USE_SOUND: bool({ default: false }),
   RR_USE_ACTIVE_CALL: bool({ default: true }),
