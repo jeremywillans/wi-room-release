@@ -19,6 +19,6 @@ function uniqueId(d, deviceId) {
   const result = deviceId.slice(-4);
   const existing = Object.keys(d).map((j) => d[j].id).includes(result);
   if (!existing) return result;
-  return uniqueId(deviceId.slice(0, deviceId.length - 1));
+  return uniqueId(d, deviceId.slice(0, deviceId.length - 1));
 }
 exports.uniqueId = uniqueId;
