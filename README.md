@@ -41,7 +41,6 @@ Periodic check of devices occurs every 30 minutes (on the half/hour intervals) t
 ## Deployment (Docker)
 
 1. Build and Deploy Docker Container (or deploy to Cloud) - ensure you include the required variables outlined below.
-An example [docker-compose.yml](docker-compsose.yml) file has been included to sp
 - This integration does not require local device access as all communications are done over Cloud xAPI.
 
     ```
@@ -85,6 +84,7 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | **HTTP Proxy**
 | GLOBAL_AGENT_HTTP_PROXY | no | string | ` ` | Container HTTP Proxy Server (format `http://<ip or fqdn>:<port>`)
 | GLOBAL_AGENT_NO_PROXY | no | string | ` ` | Comma Separated List of excluded proxy domains (Supports wildcards)
+| NODE_EXTRA_CA_CERTS | no | string | ` ` | Include extra CA Cert bundle if required, (PEM format) ensure location is attached as a volume to the container
 | **Occupancy Detections**
 | RR_USE_SOUND | no | bool | `false` | Use sound level to consider room occupied (set level below)
 | RR_USE_ACTIVE_CALL | no | bool | `true` | Use active call for detection (inc airplay)
