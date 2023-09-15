@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.3
+- Fix error handling for non-async xapi commands
+- Reduce non-essential xapi requests on presence change 
+- Include docker compose file and instructions
+- Include room release process flow
+- Bump deps
+
 ## 0.0.2
 - Remove ultrasound parameters - glass wall scenarios can be remedied using meeting zones
 - Consolidate getMetrics xAPI requests
