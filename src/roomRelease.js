@@ -91,27 +91,23 @@ class RoomRelease {
 
   // Display check in prompt and play announcement tone
   promptUser() {
-    try {
-      this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Display', {
-        Title: 'Unoccupied Room',
-        Text: 'Please Check-In below to retain this Room Booking.',
-        FeedbackId: this.feedbackId,
-        'Option.1': 'Check-In',
-      });
-    } catch (error) {
+    this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Display', {
+      Title: 'Unoccupied Room',
+      Text: 'Please Check-In below to retain this Room Booking.',
+      FeedbackId: this.feedbackId,
+      'Option.1': 'Check-In',
+    }).catch((error) => {
       logger.error(`${this.id}: Unable to display Check-in prompt`);
       logger.debug(`${this.id}: ${error.message}`);
-    }
+    });
 
     if (!this.o.playAnnouncement) return;
-    try {
-      this.xapi.command(this.deviceId, 'Audio.Sound.Play', {
-        Loop: 'Off', Sound: 'Announcement',
-      });
-    } catch (error) {
+    this.xapi.command(this.deviceId, 'Audio.Sound.Play', {
+      Loop: 'Off', Sound: 'Announcement',
+    }).catch((error) => {
       logger.error(`${this.id}: Unable to play announcement tone`);
       logger.debug(`${this.id}: ${error.message}`);
-    }
+    });
   }
 
   // OSD countdown message for check in
@@ -119,7 +115,7 @@ class RoomRelease {
     this.alertDuration -= 1;
     if (this.alertDuration <= 0) {
       clearInterval(this.alertInterval);
-      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear');
+      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear').catch(() => {});
       return;
     }
 
@@ -131,12 +127,10 @@ class RoomRelease {
       msgBody.y = 2000;
       msgBody.x = 5000;
     }
-    try {
-      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Display', msgBody);
-    } catch (error) {
+    this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Display', msgBody).catch((error) => {
       logger.error(`${this.id}: Unable to display Check-in prompt`);
       logger.debug(`${this.id}: ${error.message}`);
-    }
+    });
 
     // Forced message display every 5 seconds
     if (this.alertDuration % 5 === 0) {
@@ -146,8 +140,8 @@ class RoomRelease {
 
   // Clear existing alerts
   clearAlerts() {
-    this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Clear', { FeedbackId: this.feedbackId });
-    this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear');
+    this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Clear', { FeedbackId: this.feedbackId }).catch(() => {});
+    this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear').catch(() => {});
     clearTimeout(this.deleteTimeout);
     clearInterval(this.alertInterval);
     this.roomIsEmpty = false;
@@ -163,6 +157,7 @@ class RoomRelease {
       if (platform.toLowerCase().includes('desk') || platform.toLowerCase().includes('board')) {
         this.moveAlert = true;
       }
+      logger.info('Processing Codec configurations...');
       const configs = {
         'HttpClient.Mode': 'On',
         'RoomAnalytics.PeopleCountOutOfCall': 'On',
@@ -214,9 +209,9 @@ class RoomRelease {
         return;
       }
       if (this.o.logDetailed) logger.debug(`${this.id}: Initiate Booking removal from device.`);
-      this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Clear', { FeedbackId: this.feedbackId });
-      this.xapi.command(this.deviceId, 'Audio.Sound.Stop');
-      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear');
+      this.xapi.command(this.deviceId, 'UserInterface.Message.Prompt.Clear', { FeedbackId: this.feedbackId }).catch(() => {});
+      this.xapi.command(this.deviceId, 'Audio.Sound.Stop').catch(() => {});
+      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear').catch(() => {});
       clearInterval(this.periodicUpdate);
 
       // We get the updated meetingId to send meeting decline
@@ -315,6 +310,7 @@ class RoomRelease {
     if (this.isRoomOccupied()) {
       // is room newly occupied
       if (this.lastFullTimestamp === 0) {
+        this.clearAlerts();
         if (this.o.logDetailed) logger.debug(`${this.id}: Room occupancy detected - updating full timestamp...`);
         this.lastFullTimestamp = Date.now();
         this.lastEmptyTimestamp = 0;
@@ -362,49 +358,54 @@ class RoomRelease {
   // Process meeting logic
   async processBooking(id) {
     // Validate booking
-    const availability = await this.xapi.status.get(this.deviceId, 'Bookings.Availability.Status');
-    if (availability === 'BookedUntil') {
-      const booking = await this.xapi.command(this.deviceId, 'Bookings.Get', { Id: id });
-      this.bookingIsActive = true;
-      this.listenerShouldCheck = true;
+    try {
+      const availability = await this.xapi.status.get(this.deviceId, 'Bookings.Availability.Status');
+      if (availability === 'BookedUntil') {
+        const booking = await this.xapi.command(this.deviceId, 'Bookings.Get', { Id: id });
+        this.bookingIsActive = true;
+        this.listenerShouldCheck = true;
 
-      // Calculate meeting length
-      let duration = 0;
-      let startTime;
-      try {
-        const t = booking.Booking.Time;
-        startTime = Date.parse(t.StartTime);
-        duration = ((Number(t.SecondsUntilEnd) + Number(t.SecondsSinceStart)) / 3600).toFixed(2);
-      } catch (error) {
-        logger.warn(`${this.id}: Unable to parse Meeting Length`);
-        logger.debug(`${this.id}: ${error.message}`);
+        // Calculate meeting length
+        let duration = 0;
+        let startTime;
+        try {
+          const t = booking.Booking.Time;
+          startTime = Date.parse(t.StartTime);
+          duration = ((Number(t.SecondsUntilEnd) + Number(t.SecondsSinceStart)) / 3600).toFixed(2);
+        } catch (error) {
+          logger.warn(`${this.id}: Unable to parse Meeting Length`);
+          logger.debug(`${this.id}: ${error.message}`);
+        }
+        // do not process meetings if it equals/exceeds defined meeting length
+        if (this.o.logDetailed) logger.debug(`${this.id}: calculated meeting length: ${duration}`);
+        if (duration >= this.o.ignoreLongerThan) {
+          if (this.o.logDetailed) logger.debug(`${this.id}: meeting ignored as equal/longer than ${this.o.ignoreLongerThan} hours`);
+          this.listenerShouldCheck = false;
+          this.bookingIsActive = false;
+          return;
+        }
+
+        // define initial delay before attempting release
+        this.initialDelay = startTime + this.o.initialReleaseDelay * 60000;
+
+        // get initial occupancy data from the codec
+        await this.getMetrics();
+
+        // Update checks to periodically validate room status.
+        this.periodicUpdate = setInterval(() => {
+          if (this.o.logDetailed) logger.debug(`${this.id}: initiating periodic processing of occupancy metrics`);
+          this.getMetrics();
+        }, (this.o.periodicInterval * 60000) + 1000);
+      } else {
+        this.initialDelay = 0;
+        this.lastFullTimestamp = 0;
+        this.lastEmptyTimestamp = 0;
+        this.roomIsEmpty = false;
+        logger.warn(`${this.id}: Booking was detected without end time!`);
       }
-      // do not process meetings if it equals/exceeds defined meeting length
-      if (this.o.logDetailed) logger.debug(`${this.id}: calculated meeting length: ${duration}`);
-      if (duration >= this.o.ignoreLongerThan) {
-        if (this.o.logDetailed) logger.debug(`${this.id}: meeting ignored as equal/longer than ${this.o.ignoreLongerThan} hours`);
-        this.listenerShouldCheck = false;
-        this.bookingIsActive = false;
-        return;
-      }
-
-      // define initial delay before attempting release
-      this.initialDelay = startTime + this.o.initialReleaseDelay * 60000;
-
-      // get initial occupancy data from the codec
-      await this.getMetrics();
-
-      // Update checks to periodically validate room status.
-      this.periodicUpdate = setInterval(() => {
-        if (this.o.logDetailed) logger.debug(`${this.id}: initiating periodic processing of occupancy metrics`);
-        this.getMetrics();
-      }, (this.o.periodicInterval * 60000) + 1000);
-    } else {
-      this.initialDelay = 0;
-      this.lastFullTimestamp = 0;
-      this.lastEmptyTimestamp = 0;
-      this.roomIsEmpty = false;
-      logger.warn(`${this.id}: Booking was detected without end time!`);
+    } catch (error) {
+      logger.warn(`${this.id}: Unable to process process booking`);
+      logger.debug(`${this.id}: ${error.message}`);
     }
   }
 
@@ -448,9 +449,6 @@ class RoomRelease {
       const inCall = Number(result) > 0;
       this.metrics.inCall = inCall;
 
-      if (this.o.detectActiveCalls && inCall) {
-        this.clearAlerts();
-      }
       if (this.listenerShouldCheck) {
         this.processOccupancy();
       }
@@ -463,9 +461,6 @@ class RoomRelease {
       const people = result === 'Yes';
       this.metrics.peoplePresence = people;
 
-      if (people) {
-        this.clearAlerts();
-      }
       if (this.listenerShouldCheck) {
         this.processOccupancy();
       }
@@ -478,9 +473,6 @@ class RoomRelease {
       const people = Number(result);
       this.metrics.peopleCount = people === -1 ? 0 : people;
 
-      if (people > 0) {
-        this.clearAlerts();
-      }
       if (this.listenerShouldCheck) {
         this.processOccupancy();
       }
@@ -494,9 +486,6 @@ class RoomRelease {
       const level = Number(result);
       this.metrics.presenceSound = level > this.o.soundLevel;
 
-      if (level > this.o.soundLevel) {
-        this.clearAlerts();
-      }
       if (this.listenerShouldCheck) {
         this.processOccupancy();
       }
@@ -513,9 +502,6 @@ class RoomRelease {
         this.metrics.sharing = true;
       }
 
-      if (this.o.detectPresentation) {
-        this.clearAlerts();
-      }
       if (this.listenerShouldCheck) {
         this.processOccupancy();
       }
@@ -526,7 +512,6 @@ class RoomRelease {
     if (this.bookingIsActive && this.o.detectInteraction) {
       if (this.o.logDetailed) logger.debug(`${this.id}: UI interaction detected`);
 
-      this.clearAlerts();
       this.lastFullTimestamp = Date.now();
       this.lastEmptyTimestamp = 0;
 
