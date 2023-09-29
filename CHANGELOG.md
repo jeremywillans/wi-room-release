@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.4
+- Bump WI Package for retry support
+
 ## 0.0.3
 - Fix error handling for non-async xapi commands
 - Reduce non-essential xapi requests on presence change 

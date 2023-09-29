@@ -1,6 +1,6 @@
 {
   "name": "wi-room-release",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Room Release Workspace Integration",
   "main": "app.js",
   "scripts": {
@@ -20,7 +20,7 @@
     "winston": "^3.10.0",
     "winston-loki": "^6.0.7",
     "winston-syslog": "^2.7.0",
-    "workspace-integrations": "^0.8.0"
+    "workspace-integrations": "^0.9.0"
   },
   "devDependencies": {
     "eslint": "^8.49.0",
