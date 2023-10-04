@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.5
+- Fix ongoing loop during release timeout
+
 ## 0.0.4
 - Bump WI Package for retry support
 

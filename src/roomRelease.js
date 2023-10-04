@@ -114,8 +114,7 @@ class RoomRelease {
   updateEverySecond() {
     this.alertDuration -= 1;
     if (this.alertDuration <= 0) {
-      clearInterval(this.alertInterval);
-      this.xapi.command(this.deviceId, 'UserInterface.Message.TextLine.Clear').catch(() => {});
+      logger.debug(`${this.id}: Alert duration met.`);
       return;
     }
 
@@ -199,6 +198,8 @@ class RoomRelease {
 
     // Process meeting removal
     this.deleteTimeout = setTimeout(async () => {
+      // clear osd timer
+      clearInterval(this.alertInterval);
       // absolute final metrics collection
       await this.getMetrics(false);
       // absolute final occupancy check
