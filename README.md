@@ -24,6 +24,9 @@ Periodic check of devices occurs every 30 minutes (on the half/hour intervals) t
 
 The process flow for how this works is included below.
 
+## Macro Version
+Within the macro directory of this repository contains a macro version of this for individual device deployment, if preferred. As the underlying code is shared between both the macro and the Workspace Integration, it will be maintained in the same repository for consistency.
+
 ## Prerequisites
 
 1. Navigate to Workspace Integrations in [Control Hub](https://admin.webex.com/workspaces/integrations)
@@ -46,7 +49,8 @@ The simplest deployment method is using [Docker](https://docs.docker.com/engine/
 
 1. Clone / Download repository
 2. Update the included docker-compose.yml file with the correct Environmental parameters
-3. Build the Docker Image using `docker build --tag wi-room-release .`
+3. - Use the prebuilt image available on Docker Hub (included in docker-compose.yml)
+   - Build the Docker Image using `docker build --tag wi-room-release .` and update image line in docker-compose.yml
 4. Provision and start the Integration using `docker-compose up -d`
 5. Review the console logs using `docker logs wi-room-release -f` (assuming you are using the default container name)
 
