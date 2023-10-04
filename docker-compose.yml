@@ -2,7 +2,7 @@ version: '3'
 
 services:
   wi-room-release:
-    image: wi-room-release:latest
+    image: jeremywillans/wi-room-release:latest
     container_name: wi-room-release
     environment:
       # REPLACE BELOW WITH PREREQUISITE VARIABLES 
