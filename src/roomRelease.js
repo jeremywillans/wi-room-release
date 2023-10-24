@@ -189,6 +189,10 @@ class RoomRelease {
 
   // Countdown timer before meeting decline
   startCountdown() {
+    // secondary check to ensure no existing timer is active
+    if (this.countdownActive) {
+      return;
+    }
     if (this.o.logDetailed) logger.debug(`${this.id}: Start countdown initiated`);
     this.countdownActive = true;
     this.promptUser();
