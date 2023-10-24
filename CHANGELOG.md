@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.6
+- Prevent duplicate check interval loops and countdown timers
+- Catch failure for retrieving booking id
+
 ## 0.0.5
 - Fix ongoing loop during release timeout
 
