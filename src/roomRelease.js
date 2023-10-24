@@ -227,6 +227,11 @@ class RoomRelease {
       try {
         // get webex booking id for current booking on codec
         bookingId = await this.xapi.status.get(this.deviceId, 'Bookings.Current.Id');
+        if (this.o.logDetailed) logger.debug(`retrieved booking id: ${bookingId}`);
+        if (!bookingId) {
+          logger.warn(`${bookingId} unable to retrieve current booking id! aborting decline`);
+          return;
+        }
         // use booking id to retrieve booking data, specifically meeting id
         booking = await this.xapi.command(this.deviceId, 'Bookings.Get', { Id: bookingId });
         if (this.o.logDetailed) logger.debug(`${this.id}: ${bookingId} contains ${booking.Booking.MeetingId}`);
