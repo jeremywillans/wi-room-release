@@ -174,6 +174,8 @@ class RoomRelease {
     this.promptUser();
 
     this.alertDuration = this.o.promptDuration;
+    // ensure no existing intervalTimer
+    clearInterval(this.alertInterval);
     this.alertInterval = setInterval(this.updateEverySecond.bind(this), 1000);
 
     // Process meeting removal
@@ -373,6 +375,7 @@ class RoomRelease {
         await this.getMetrics();
 
         // Update checks to periodically validate room status.
+        clearInterval(this.periodicUpdate);
         this.periodicUpdate = setInterval(() => {
           if (this.o.logDetailed) console.debug('initiating periodic processing of occupancy metrics');
           this.getMetrics();
