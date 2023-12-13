@@ -103,10 +103,15 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | RR_IGNORE_LONGER_THAN | no | num | `3` | (Hrs) meetings longer than this will be skipped
 | RR_PROMPT_DURATION | no | num | `60` | (Secs) display prompt time before room declines invite
 | RR_PERIODIC_INTERVAL | no | num | `2` | (Mins) duration to perform periodic occupancy checks
+| **Webex Notification Options**
+| RR_SEND_MESSAGE | no | bool | `false` | Send message to Webex space when room released
+| RR_ROOM_ID | no | string | ` ` | Webex Messaging Space to send release notifications
+| RR_BOT_TOKEN | no | string | ` ` | Token for Bot account - must be in Space listed above!
 | **Other Parameters**
 | RR_TEST_MODE | no | bool | `false` | Used for testing, prevents the booking from being removed
 | RR_PlAY_ANNOUNCEMENT | no | bool | `true` | Play announcement tone during check in prompt
 | RR_FEEDBACK_ID | no | string | `alertResponse` | Identifier assigned to prompt response
+| RR_HTTP_TIMEOUT | no | num | `60000` | HTTP API Timeout, in milliseconds
 
 ***Note:** You must either include the encoded Activation Code, or the four individual decoded parameters.
 

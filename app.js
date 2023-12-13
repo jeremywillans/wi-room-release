@@ -15,6 +15,7 @@ const { cleanEnv, str } = require('envalid');
 const logger = require('./src/logger')('app');
 const utils = require('./src/utils');
 const { RoomRelease } = require('./src/roomRelease');
+const httpService = require('./src/httpService');
 const { name, version } = require('./package.json');
 
 // Process ENV Parameters
@@ -75,7 +76,7 @@ async function processDevice(i, d, deviceId, deviceObj) {
   if (!device.connectionStatus.match(/^connected/)) return;
   // Declare Class
   const id = utils.uniqueId(d, deviceId.replace('=', ''));
-  d[deviceId] = new RoomRelease(i, id, deviceId);
+  d[deviceId] = new RoomRelease(i, id, deviceId, httpService);
   logger.info(`${d[deviceId].id}: ${utils.shortName(deviceId)}`);
   logger.info(`${d[deviceId].id}: Creating Instance for ${device.displayName}.`);
   try {

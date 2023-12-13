@@ -4,7 +4,7 @@
 # Room Release Macro
 # Written by Jeremy Willans
 # https://github.com/jeremywillans/wi-room-release
-# Version: 0.0.6
+# Version: 0.0.7
 #
 # USE AT OWN RISK, MACRO NOT FULLY TESTED NOR SUPPLIED WITH ANY GUARANTEE
 #
@@ -37,12 +37,23 @@ const rrOptions = {
   promptDuration: 60, // (Secs) display prompt time before room declines invite
   periodicInterval: 2, // (Mins) duration to perform periodic occupancy checks
 
+  // Webex Notification Options
+  sendMessage: false, // Send message to Webex space when room released
+  roomId: '## roomId ##', // Webex Messaging Space to send release notifications
+  botToken: '## botToken ##', // Token for Bot account - must be in Space listed above!
+
   // Other Parameters
   testMode: false, // used for testing, prevents the booking from being removed
   playAnnouncement: true, // Play announcement tone during check in prompt
   feedbackId: 'alertResponse', // identifier assigned to prompt response
   logDetailed: true, // enable detailed logging
 };
+
+const Header = [
+  `Authorization: Bearer ${rrOptions.botToken}`,
+  'Content-Type: application/json',
+  'Accept: application/json',
+];
 
 // ----- EDIT BELOW THIS LINE AT OWN RISK ----- //
 
@@ -70,6 +81,35 @@ class RoomRelease {
       presenceSound: false,
       sharing: false,
     };
+    this.sysInfo = {};
+  }
+
+  // Post content to Webex Space
+  async postContent(booking, result) {
+    if (this.o.logDetailed) console.debug('Prepare send webex message');
+    const { Booking } = booking;
+    const blockquote = result.status === 'OK' ? 'success' : 'warning';
+
+    let html = (`<strong>Room Release Notification</strong><blockquote class=${blockquote}><strong>System Name:</strong> ${this.sysInfo.name}<br><strong>Serial Number:</strong> ${this.sysInfo.serial}<br><strong>Platform:</strong> ${this.sysInfo.platform}`);
+    let organizer = 'Unknown';
+    if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
+    html += `<br><strong>Organizer:</strong> ${organizer}`;
+    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime) : 'Unknown'}`;
+    html += `<br><strong>Decline Status:</strong> ${result.Status ? result.Status : 'Unknown'}`;
+
+    const messageContent = { roomId: this.o.spaceId, html };
+
+    try {
+      const outcome = await xapi.command('HttpClient Post', { Header, Url: 'https://webexapis.com/v1/messages' }, JSON.stringify(messageContent));
+      if (outcome.StatusCode !== '200') {
+        console.error(`unexpected response code: ${outcome.StatusCode}`);
+        console.debug(`send message error: ${outcome.message}`);
+      }
+      if (this.o.logDetailed) console.debug('message sent.');
+    } catch (error) {
+      console.error('error sending message');
+      console.debug(`send message error: ${error.message}`);
+    }
   }
 
   // Display check in prompt and play announcement tone
@@ -133,10 +173,17 @@ class RoomRelease {
   // Configure Cisco codec for occupancy metrics
   async configureCodec() {
     try {
+      // Get system / contact name
+      this.sysInfo.name = await xapi.Status.UserInterface.ContactInfo.Name.get();
+      // Get system serial
+      this.sysInfo.serial = await xapi.Status.SystemUnit.Hardware.Module.SerialNumber.get();
+      if (this.sysInfo.name === '') {
+        this.sysInfo.name = this.sysInfo.serial;
+      }
       // Get codec platform
-      const platform = await xapi.status.get('SystemUnit.ProductPlatform');
+      this.sysInfo.platform = await xapi.status.get('SystemUnit.ProductPlatform');
       // if matches desk or board series, flag that the on screen alert needs to be moved up
-      if (platform.toLowerCase().includes('desk') || platform.toLowerCase().includes('board')) {
+      if (this.sysInfo.platform.toLowerCase().includes('desk') || this.sysInfo.platform.toLowerCase().includes('board')) {
         this.moveAlert = true;
       }
       console.info('Processing Codec configurations...');
@@ -221,15 +268,22 @@ class RoomRelease {
         return;
       }
       try {
+        let result;
         if (this.o.testMode) {
           if (this.o.logDetailed) console.info('Test mode enabled, booking decline skipped.');
+          result = { Status: 'Skipped (Test Mode)' };
         } else {
           // attempt decline meeting to control hub
-          await xapi.command('Bookings.Respond', {
+          result = await xapi.command('Bookings.Respond', {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
+
           if (this.o.logDetailed) console.debug('Booking declined.');
+        }
+        // Post content to Webex
+        if (this.o.sendMessage) {
+          this.postContent(booking, result);
         }
       } catch (error) {
         console.error(`Unable to respond to meeting ${booking.Booking.MeetingId}`);

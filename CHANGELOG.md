@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.7
+**BREAKING** - Requires Manifest update for Workspace Integration
+- Add ability to send Webex Message when room released
+
 ## 0.0.6
 - Prevent duplicate check interval loops and countdown timers
 - Catch failure for retrieving booking id

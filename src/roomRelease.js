@@ -25,6 +25,10 @@ const e = cleanEnv(process.env, {
   RR_IGNORE_LONGER_THAN: num({ default: 3 }), // Hours
   RR_PROMPT_DURATION: num({ default: 60 }), // Seconds
   RR_PERIODIC_INTERVAL: num({ default: 2 }), // Minutes
+  // Webex Notification Options
+  RR_SEND_MESSAGE: bool({ default: false }),
+  RR_ROOM_ID: str({ default: undefined }),
+  RR_BOT_TOKEN: str({ default: undefined }),
   // Other Parameters
   RR_TEST_MODE: bool({ default: false }),
   RR_PlAY_ANNOUNCEMENT: bool({ default: true }),
@@ -53,6 +57,11 @@ const rrOptions = {
   promptDuration: e.RR_PROMPT_DURATION, // (Secs) display prompt time before room declines invite
   periodicInterval: e.RR_PERIODIC_INTERVAL, // (Mins) duration to perform periodic occupancy checks
 
+  // Webex Notification Options
+  sendMessage: e.RR_SEND_MESSAGE, // Send message to Webex space when room released
+  roomId: e.RR_ROOM_ID, // Webex Messaging Space to send release notifications
+  botToken: e.RR_BOT_TOKEN, // Token for Bot account - must be in Space listed above!
+
   // Other Parameters
   testMode: e.RR_TEST_MODE, // used for testing, prevents the booking from being removed
   playAnnouncement: e.RR_PlAY_ANNOUNCEMENT, // Play announcement tone during check in prompt
@@ -62,11 +71,12 @@ const rrOptions = {
 
 // Room Release Class - Instantiated per Device
 class RoomRelease {
-  constructor(i, id, deviceId) {
+  constructor(i, id, deviceId, httpService) {
     this.xapi = i.xapi;
     this.id = id;
     this.deviceId = deviceId;
     this.o = rrOptions;
+    this.httpService = httpService;
     this.moveAlert = false;
     this.feedbackId = rrOptions.feedbackId;
     this.alertDuration = 0;
@@ -87,6 +97,29 @@ class RoomRelease {
       presenceSound: false,
       sharing: false,
     };
+    this.sysInfo = {};
+  }
+
+  // Post content to Webex Space
+  async postContent(booking, result) {
+    if (this.o.logDetailed) logger.debug(`${this.id}: Prepare send webex message`);
+    const { Booking } = booking;
+    const blockquote = result.status === 'OK' ? 'success' : 'warning';
+
+    let html = (`<strong>Room Release Notification</strong><blockquote class=${blockquote}><strong>System Name:</strong> ${this.sysInfo.name}<br><strong>Serial Number:</strong> ${this.sysInfo.serial}<br><strong>Platform:</strong> ${this.sysInfo.platform}`);
+    let organizer = 'Unknown';
+    if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
+    html += `<br><strong>Organizer:</strong> ${organizer}`;
+    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime) : 'Unknown'}`;
+    html += `<br><strong>Decline Status:</strong> ${result.Status ? result.Status : 'Unknown'}`;
+
+    try {
+      await this.httpService.postMessage(this.o.botToken, this.o.roomId, html, 'html');
+      if (this.o.logDetailed) logger.debug(`${this.id}: message sent.`);
+    } catch (error) {
+      logger.error(`${this.id}: error sending message`);
+      logger.debug(`${this.id}: send message error: ${error.message}`);
+    }
   }
 
   // Display check in prompt and play announcement tone
@@ -150,10 +183,17 @@ class RoomRelease {
   // Configure Cisco codec for occupancy metrics
   async configureCodec() {
     try {
+      // Get system / contact name
+      this.sysInfo.name = await this.xapi.status.get(this.deviceId, 'UserInterface.ContactInfo.Name');
+      // Get system serial
+      this.sysInfo.serial = await this.xapi.status.get(this.deviceId, 'SystemUnit.Hardware.Module.SerialNumber');
+      if (this.sysInfo.name === '') {
+        this.sysInfo.name = this.sysInfo.serial;
+      }
       // Get codec platform
-      const platform = await this.xapi.status.get(this.deviceId, 'SystemUnit.ProductPlatform');
+      this.sysInfo.platform = await this.xapi.status.get(this.deviceId, 'SystemUnit.ProductPlatform');
       // if matches desk or board series, flag that the on screen alert needs to be moved up
-      if (platform.toLowerCase().includes('desk') || platform.toLowerCase().includes('board')) {
+      if (this.sysInfo.platform.toLowerCase().includes('desk') || this.sysInfo.platform.toLowerCase().includes('board')) {
         this.moveAlert = true;
       }
       logger.info('Processing Codec configurations...');
@@ -241,15 +281,21 @@ class RoomRelease {
         return;
       }
       try {
+        let result;
         if (this.o.testMode) {
           if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
+          result = { Status: 'Skipped (Test Mode)' };
         } else {
           // attempt decline meeting to control hub
-          await this.xapi.command(this.deviceId, 'Bookings.Respond', {
+          result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
           if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
+        }
+        // Post content to Webex
+        if (this.o.sendMessage) {
+          this.postContent(booking, result);
         }
       } catch (error) {
         logger.error(`${this.id}: Unable to respond to meeting ${booking.Booking.MeetingId}`);
