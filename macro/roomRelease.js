@@ -4,7 +4,7 @@
 # Room Release Macro
 # Written by Jeremy Willans
 # https://github.com/jeremywillans/wi-room-release
-# Version: 0.0.7
+# Version: 0.0.8
 #
 # USE AT OWN RISK, MACRO NOT FULLY TESTED NOR SUPPLIED WITH ANY GUARANTEE
 #
@@ -95,9 +95,9 @@ class RoomRelease {
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
     html += `<br><strong>Organizer:</strong> ${organizer}`;
     html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime) : 'Unknown'}`;
-    html += `<br><strong>Decline Status:</strong> ${result.Status ? result.Status : 'Unknown'}`;
+    html += `<br><strong>Decline Status:</strong> ${result.status ? result.status : 'Unknown'}`;
 
-    const messageContent = { roomId: this.o.spaceId, html };
+    const messageContent = { roomId: this.o.roomId, html };
 
     try {
       const outcome = await xapi.command('HttpClient Post', { Header, Url: 'https://webexapis.com/v1/messages' }, JSON.stringify(messageContent));

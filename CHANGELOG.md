@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.8
+- Fix errors with output to Webex Messaging
+
 ## 0.0.7
 **BREAKING** - Requires Manifest update for Workspace Integration
 - Add ability to send Webex Message when room released

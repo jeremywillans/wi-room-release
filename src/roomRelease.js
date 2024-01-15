@@ -111,7 +111,7 @@ class RoomRelease {
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
     html += `<br><strong>Organizer:</strong> ${organizer}`;
     html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime) : 'Unknown'}`;
-    html += `<br><strong>Decline Status:</strong> ${result.Status ? result.Status : 'Unknown'}`;
+    html += `<br><strong>Decline Status:</strong> ${result.status ? result.status : 'Unknown'}`;
 
     try {
       await this.httpService.postMessage(this.o.botToken, this.o.roomId, html, 'html');
