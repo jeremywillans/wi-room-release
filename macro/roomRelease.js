@@ -4,7 +4,7 @@
 # Room Release Macro
 # Written by Jeremy Willans
 # https://github.com/jeremywillans/wi-room-release
-# Version: 0.0.8
+# Version: 0.0.9
 #
 # USE AT OWN RISK, MACRO NOT FULLY TESTED NOR SUPPLIED WITH ANY GUARANTEE
 #

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.9
+- Reset countdown variable after meeting decline
+- Reduce default interval timer to 1 minute
+- Prevent duplicate delete timeouts
+
 ## 0.0.8
 - Fix errors with output to Webex Messaging
 
