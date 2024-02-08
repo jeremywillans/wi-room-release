@@ -295,6 +295,7 @@ class RoomRelease {
       this.lastFullTimestamp = 0;
       this.lastEmptyTimestamp = 0;
       this.roomIsEmpty = false;
+      this.countdownActive = false;
     }, this.o.promptDuration * 1000);
   }
 
