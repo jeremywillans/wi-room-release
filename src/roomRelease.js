@@ -24,7 +24,7 @@ const e = cleanEnv(process.env, {
   RR_SOUND_LEVEL: num({ default: 50 }), // dBA
   RR_IGNORE_LONGER_THAN: num({ default: 3 }), // Hours
   RR_PROMPT_DURATION: num({ default: 60 }), // Seconds
-  RR_PERIODIC_INTERVAL: num({ default: 2 }), // Minutes
+  RR_PERIODIC_INTERVAL: num({ default: 1 }), // Minutes
   // Webex Notification Options
   RR_SEND_MESSAGE: bool({ default: false }),
   RR_ROOM_ID: str({ default: undefined }),

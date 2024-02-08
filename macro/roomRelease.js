@@ -35,7 +35,7 @@ const rrOptions = {
   soundLevel: 50, // (dB) Minimum sound level required to consider occupied
   ignoreLongerThan: 5, // (Hrs) meetings longer than this will be skipped
   promptDuration: 60, // (Secs) display prompt time before room declines invite
-  periodicInterval: 2, // (Mins) duration to perform periodic occupancy checks
+  periodicInterval: 1, // (Mins) duration to perform periodic occupancy checks
 
   // Webex Notification Options
   sendMessage: false, // Send message to Webex space when room released
