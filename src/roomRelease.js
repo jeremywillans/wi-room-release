@@ -231,6 +231,7 @@ class RoomRelease {
   startCountdown() {
     // secondary check to ensure no existing timer is active
     if (this.countdownActive) {
+      if (this.o.logDetailed) logger.debug('Countdown already active');
       return;
     }
     if (this.o.logDetailed) logger.debug(`${this.id}: Start countdown initiated`);
