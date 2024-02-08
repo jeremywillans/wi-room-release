@@ -231,6 +231,7 @@ class RoomRelease {
     this.alertInterval = setInterval(this.updateEverySecond.bind(this), 1000);
 
     // Process meeting removal
+    clearTimeout(this.deleteTimeout);
     this.deleteTimeout = setTimeout(async () => {
       // clear osd timer
       clearInterval(this.alertInterval);
