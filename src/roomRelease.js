@@ -35,6 +35,24 @@ const e = cleanEnv(process.env, {
   RR_FEEDBACK_ID: str({ default: 'alertResponse' }),
 });
 
+// RoomOS Version Check
+const minVersion = '11.0.0.0';
+function versionCheck(sysVersion) {
+  const reg = /^\D*(?<MAJOR>\d*)\.(?<MINOR>\d*)\.(?<EXTRA>\d*)\.(?<BUILD>\d*).*$/i;
+  const x = (reg.exec(sysVersion)).groups;
+  const y = (reg.exec(minVersion)).groups;
+  if (Number(x.MAJOR) > Number(y.MAJOR)) return true;
+  if (Number(x.MAJOR) < Number(y.MAJOR)) return false;
+  if (Number(x.MINOR) > Number(y.MINOR)) return true;
+  if (Number(x.MINOR) < Number(y.MINOR)) return false;
+  if (Number(x.EXTRA) > Number(y.EXTRA)) return true;
+  if (Number(x.EXTRA) < Number(y.EXTRA)) return false;
+  if (Number(x.BUILD) > Number(y.BUILD)) return true;
+  if (Number(x.BUILD) < Number(y.BUILD)) return false;
+  return false;
+}
+exports.versionCheck = versionCheck;
+
 // Define Room Release options from ENV Parameters
 const rrOptions = {
   // Occupancy Detections
@@ -72,11 +90,12 @@ const rrOptions = {
 // Room Release Class - Instantiated per Device
 class RoomRelease {
   constructor(i, id, deviceId, httpService) {
-    this.xapi = i.xapi;
     this.id = id;
     this.deviceId = deviceId;
-    this.o = rrOptions;
     this.httpService = httpService;
+    this.active = false;
+    this.xapi = i.xapi;
+    this.o = rrOptions;
     this.moveAlert = false;
     this.feedbackId = rrOptions.feedbackId;
     this.alertDuration = 0;
@@ -90,6 +109,7 @@ class RoomRelease {
     this.lastFullTimestamp = 0;
     this.lastEmptyTimestamp = 0;
     this.initialDelay = 0;
+    this.isRoomOS = false;
     this.metrics = {
       peopleCount: 0,
       peoplePresence: false,
@@ -152,9 +172,12 @@ class RoomRelease {
     }
 
     const msgBody = {
-      text: `Unoccupied Room Alert! It will be released in ${this.alertDuration} seconds.<br>Please use Touch Panel to retain booking.`,
+      text: `Unoccupied Room Alert! It will be released in ${this.alertDuration} seconds.`,
       duration: 0,
     };
+    if (!this.moveAlert) {
+      msgBody.text = `${msgBody.text}<br>Please use Touch Panel to retain booking.`;
+    }
     if (this.moveAlert) {
       msgBody.y = 2000;
       msgBody.x = 5000;
@@ -183,11 +206,23 @@ class RoomRelease {
   // Configure Cisco codec for occupancy metrics
   async configureCodec() {
     try {
-      // Get system / contact name
-      this.sysInfo.name = await this.xapi.status.get(this.deviceId, 'UserInterface.ContactInfo.Name');
-      // Get system serial
-      this.sysInfo.serial = await this.xapi.status.get(this.deviceId, 'SystemUnit.Hardware.Module.SerialNumber');
-      if (this.sysInfo.name === '') {
+      const systemUnit = await this.xapi.status.get(this.deviceId, 'SystemUnit.*');
+      this.sysInfo.version = systemUnit.Software.Version;
+      // verify supported version
+      if (!versionCheck(this.sysInfo.version)) throw new Error('Unsupported RoomOS');
+      // Determine device mode
+      // eslint-disable-next-line no-nested-ternary
+      const mtrSupported = /^true$/i.test(systemUnit.Extensions ? systemUnit.Extensions.Microsoft ? systemUnit.Extensions.Microsoft.Supported : false : false);
+      if (mtrSupported) {
+        const mtrStatus = await this.xapi.command(this.deviceId, 'MicrosoftTeams.List');
+        this.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
+        if (!this.isRoomOS) { logger.info(`${this.id}: Device in Microsoft Mode`); }
+      }
+      // Get System Name / Contact Name
+      if (this.isRoomOS) this.sysInfo.name = await this.xapi.status.get(this.deviceId, 'UserInterface.ContactInfo.Name');
+      // Get System SN
+      this.sysInfo.serial = systemUnit.Hardware.Module.SerialNumber;
+      if (!this.sysInfo.name || this.sysInfo.name === '') {
         this.sysInfo.name = this.sysInfo.serial;
       }
       // Get codec platform
@@ -204,8 +239,8 @@ class RoomRelease {
       };
       await this.xapi.config.setMany(this.deviceId, configs);
     } catch (error) {
-      logger.error(`${this.id}: Unable to configure codec`);
       logger.debug(`${this.id}: ${error.message}`);
+      throw new Error('Config Error');
     }
   }
 
@@ -293,6 +328,7 @@ class RoomRelease {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
+
           if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
         }
         // Post content to Webex
@@ -323,16 +359,19 @@ class RoomRelease {
   // Poll codec to retrieve updated metrics
   async getMetrics(processResults = true) {
     try {
-      const results = await Promise.all([
-        this.getData('SystemUnit.State.NumberOfActiveCalls'),
-        this.getData('RoomAnalytics.*'),
-      ]);
+      const metricArray = [this.getData('RoomAnalytics.*')];
+      if (this.isRoomOS) {
+        metricArray.push(this.getData('SystemUnit.State.NumberOfActiveCalls'));
+      } else {
+        metricArray.push(this.getData('MicrosoftTeams.Calling.InCall'));
+      }
 
+      const results = await Promise.all(metricArray);
       // evaluate the results
-      const numCalls = Number(results[0]);
-      const presence = results[1].PeoplePresence === 'Yes';
-      const peopleCount = Number(results[1].PeopleCount.Current);
-      const soundResult = Number(results[1].Sound.Level.A);
+      const presence = results[0].PeoplePresence === 'Yes';
+      const peopleCount = Number(results[0].PeopleCount.Current);
+      const soundResult = Number(results[0].Sound.Level.A);
+      const activeCall = this.isRoomOS ? Number(results[1]) > 0 : /^true$/i.test(results[1]);
 
       // test for local sharing xapi
       const sharing = await this.xapi.status.get(this.deviceId, 'Conference.Presentation.LocalInstance[*].SendingMode', true);
@@ -343,7 +382,7 @@ class RoomRelease {
       this.metrics.peoplePresence = presence;
 
       // Process active calls
-      if (numCalls > 0 && this.o.detectActiveCalls) {
+      if (activeCall && this.o.detectActiveCalls) {
         this.metrics.inCall = true;
         // if in call we assume that people are present
         this.metrics.peoplePresence = true;
@@ -505,10 +544,10 @@ class RoomRelease {
     this.lastEmptyTimestamp = 0;
   }
 
-  handleActiveCall(result) {
+  handleActiveCall(status) {
     if (this.bookingIsActive) {
-      if (this.o.logDetailed) logger.debug(`${this.id}: Number of active calls: ${result}`);
-      const inCall = Number(result) > 0;
+      if (this.o.logDetailed) logger.debug(`${this.id}: Number of active calls: ${status}`);
+      const inCall = Number(status) > 0;
       this.metrics.inCall = inCall;
 
       if (this.listenerShouldCheck) {
@@ -517,10 +556,22 @@ class RoomRelease {
     }
   }
 
-  handlePeoplePresence(result) {
+  handleMTRCall(event) {
     if (this.bookingIsActive) {
-      if (this.o.logDetailed) logger.debug(`${this.id}: Presence: ${result}`);
-      const people = result === 'Yes';
+      const result = /^true$/i.test(event);
+      if (this.o.logDetailed) logger.debug(`Active MTR Call: ${result}`);
+      this.metrics.inCall = result;
+
+      if (this.listenerShouldCheck) {
+        this.processOccupancy();
+      }
+    }
+  }
+
+  handlePeoplePresence(status) {
+    if (this.bookingIsActive) {
+      if (this.o.logDetailed) logger.debug(`${this.id}: Presence: ${status}`);
+      const people = status === 'Yes';
       this.metrics.peoplePresence = people;
 
       if (this.listenerShouldCheck) {
@@ -529,10 +580,10 @@ class RoomRelease {
     }
   }
 
-  handlePeopleCount(result) {
+  handlePeopleCount(status) {
     if (this.bookingIsActive) {
-      if (this.o.logDetailed) logger.debug(`${this.id}: People count: ${result}`);
-      const people = Number(result);
+      if (this.o.logDetailed) logger.debug(`${this.id}: People count: ${status}`);
+      const people = Number(status);
       this.metrics.peopleCount = people === -1 ? 0 : people;
 
       if (this.listenerShouldCheck) {
@@ -541,11 +592,11 @@ class RoomRelease {
     }
   }
 
-  handleSoundDetection(result) {
+  handleSoundDetection(status) {
     // Only process when enabled to reduce log noise
     if (this.bookingIsActive && this.o.detectSound) {
-      if (this.o.logDetailed) logger.debug(`${this.id}: Sound level: ${result}`);
-      const level = Number(result);
+      if (this.o.logDetailed) logger.debug(`${this.id}: Sound level: ${status}`);
+      const level = Number(status);
       this.metrics.presenceSound = level > this.o.soundLevel;
 
       if (this.listenerShouldCheck) {
@@ -554,13 +605,13 @@ class RoomRelease {
     }
   }
 
-  handlePresentationLocalInstance(result) {
+  handlePresentationLocalInstance(status) {
     if (this.bookingIsActive) {
-      if (result.ghost) {
+      if (status.ghost) {
         if (this.o.logDetailed) logger.debug(`${this.id}: Presentation stopped`);
         this.metrics.sharing = false;
       } else {
-        if (this.o.logDetailed) logger.debug(`${this.id}: Presentation started: ${result}`);
+        if (this.o.logDetailed) logger.debug(`${this.id}: Presentation started: ${status}`);
         this.metrics.sharing = true;
       }
 
@@ -583,4 +634,4 @@ class RoomRelease {
     }
   }
 }
-exports.RoomRelease = RoomRelease;
+exports.Init = RoomRelease;

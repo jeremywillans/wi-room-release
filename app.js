@@ -11,10 +11,10 @@
 const wi = require('workspace-integrations');
 const { bootstrap } = require('global-agent');
 const schedule = require('node-schedule');
-const { cleanEnv, str } = require('envalid');
+const { cleanEnv, str, bool } = require('envalid');
 const logger = require('./src/logger')('app');
 const utils = require('./src/utils');
-const { RoomRelease } = require('./src/roomRelease');
+const roomRelease = require('./src/roomRelease');
 const httpService = require('./src/httpService');
 const { name, version } = require('./package.json');
 
@@ -23,6 +23,7 @@ const e = cleanEnv(process.env, {
   // Integration Options
   DEVICE_TAG: str({ default: name }),
   WI_LOGGING: str({ default: 'error' }),
+  LOG_DETAILED: bool({ default: true }),
   CLIENT_ID: str(),
   CLIENT_SECRET: str(),
   // Integration Credentials
@@ -74,9 +75,14 @@ async function processDevice(i, d, deviceId, deviceObj) {
   if (!device.tags.includes(e.DEVICE_TAG)) return;
   // Ensure device is online before processing
   if (!device.connectionStatus.match(/^connected/)) return;
+  // Ensure device meets version requirement
+  if (!roomRelease.versionCheck(device.software)) {
+    if (e.LOG_DETAILED) logger.warn(`Skipping Device ${utils.shortName(deviceId)} - Unsupported RoomOS`);
+    return;
+  }
   // Declare Class
   const id = utils.uniqueId(d, deviceId.replace('=', ''));
-  d[deviceId] = new RoomRelease(i, id, deviceId, httpService);
+  d[deviceId] = new roomRelease.Init(i, id, deviceId, httpService);
   logger.info(`${d[deviceId].id}: ${utils.shortName(deviceId)}`);
   logger.info(`${d[deviceId].id}: Creating Instance for ${device.displayName}.`);
   try {
@@ -84,6 +90,7 @@ async function processDevice(i, d, deviceId, deviceObj) {
     d[deviceId].clearAlerts();
     // ensure codec is configured correctly
     await d[deviceId].configureCodec();
+    d[deviceId].active = true;
     // check for current meeting
     const currentId = await i.xapi.status.get(deviceId, 'Bookings.Current.Id');
     if (currentId) {
@@ -101,30 +108,58 @@ async function processDevices(i, d) {
     // Get devices from xapi
     const devices = await i.devices.getDevices({ tag: e.DEVICE_TAG });
     if (!devices.length) {
-      logger.error('No Matching Devices found!');
-      return;
+      logger.warn('No Matching Devices found!');
     }
 
-    // Process tagged devices
-    await Promise.all(
-      devices.map(async (device) => {
-        // skip if instance exists
-        if (d[device.id]) return;
-        await processDevice(i, d, device.id, device);
-      }),
-    );
+    // Split into 20 Device Chunks to reduce load on API Servers during Startup
+    const deviceGroups = devices.reduce((all, one, k) => {
+      const ch = Math.floor(k / 20);
+      // eslint-disable-next-line no-param-reassign
+      all[ch] = [].concat((all[ch] || []), one);
+      return all;
+    }, []);
+
+    // eslint-disable-next-line no-plusplus
+    for (let k = 0; k < deviceGroups.length; k++) {
+      const id = k + 1;
+      if (deviceGroups.length > 1) logger.debug(`process group ${id} of ${deviceGroups.length}`);
+      // Process tagged devices
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(
+        deviceGroups[k].map(async (device) => {
+          // skip if instance exists
+          if (d[device.id]) return;
+          await processDevice(i, d, device.id, device);
+        }),
+      );
+    }
 
     // Remove untagged devices
     const toRemove = Object.keys(d).filter((j) => !devices.map((k) => k.id).includes(j));
-    toRemove.forEach((item) => {
-      logger.info(`${d[item].id}: Device no longer tagged, Removing Instance.`);
-      d[item] = null;
-      delete d[item];
-    });
+    await Promise.all(
+      toRemove.map(async (deviceId) => {
+        logger.info(`${d[deviceId].id}: Device no longer tagged, removing Instance.`);
+        d[deviceId] = null;
+        delete d[deviceId];
+      }),
+    );
+
+    logger.info(`Active Device Class Instances: ${Object.keys(d).filter((k) => d[k].active).length}`);
+    const inactiveDevices = Object.keys(d).filter((k) => !d[k].active).length;
+    if (inactiveDevices > 0) logger.warn(`Inactive Device Class Instances: ${inactiveDevices}`);
   } catch (error) {
     logger.warn('Unable to process devices');
     logger.debug(error.message);
   }
+}
+
+function deviceActive(sys) {
+  if (!sys) return false;
+  if (!sys.active) {
+    logger.warn(`Notification detected from inactive device - ${sys.id}`);
+    return false;
+  }
+  return true;
 }
 
 // Init integration
@@ -159,99 +194,106 @@ async function init(json) {
     await processDevices(i, d);
 
     // Periodically re-process devices to capture tag changes (every 30 mins)
-    schedule.scheduleJob('*/30 * * * *', async () => {
+    schedule.scheduleJob('*/2 * * * *', async () => {
       logger.info('--- Periodic Device Processing');
       await processDevices(i, d);
     });
 
     logger.info('--- Processing WI Subscriptions');
-    // Process Device Ready
+    // Process device ready
     i.xapi.status.on('SystemUnit.State.System', async (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr && result === 'Initialized') {
+      const sys = d[deviceId];
+      if (!sys && result === 'Initialized') {
         await processDevice(i, d, deviceId);
       }
     });
-    // Process Reboot Event
+    // Process reboot event
     i.xapi.event.on('BootEvent', (deviceId, _path, event) => {
-      const rr = d[deviceId];
-      if (rr) {
-        logger.info(`${rr.id}: Device ${event.Action}, Removing Instance.`);
+      const sys = d[deviceId];
+      if (sys) {
+        logger.info(`${sys.id}: Device ${event.Action}, Removing Instance.`);
         d[deviceId] = null;
         delete d[deviceId];
       }
     });
 
-    logger.info('--- Processing Room Resource Subscriptions');
+    logger.info('--- Processing Subscriptions');
     // Process booking start
     i.xapi.event.on('Bookings.Start', (deviceId, _path, event) => {
-      const rr = d[deviceId];
-      if (!rr) {
+      const sys = d[deviceId];
+      if (!sys) {
         // attempt process device
         processDevice(i, d, deviceId);
         return;
       }
-      logger.info(`${rr.id}: Booking ${event.Id} detected`);
-      rr.processBooking(event.Id);
+      if (!deviceActive(sys)) return;
+      logger.info(`${sys.id}: Booking ${event.Id} detected`);
+      sys.processBooking(event.Id);
     });
     // Process booking extension
     i.xapi.event.on('Bookings.ExtensionRequested', (deviceId, _path, event) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      logger.info(`${rr.id}: Booking ${event.OriginalMeetingId} updated`);
-      rr.handleBookingExtension(event.OriginalMeetingId);
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      logger.info(`${sys.id}: Booking ${event.OriginalMeetingId} updated`);
+      sys.handleBookingExtension(event.OriginalMeetingId);
     });
     // Process booking end
     i.xapi.event.on('Bookings.End', (deviceId, _path, event) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      logger.info(`${rr.id}: Booking ${event.Id} ended Stop Checking`);
-      rr.handleBookingEnd(event);
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      logger.info(`${sys.id}: Booking ${event.Id} ended Stop Checking`);
+      sys.handleBookingEnd(event);
     });
     // Process UI interaction
     i.xapi.event.on('UserInterface.Extensions', (deviceId) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handleInteraction();
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handleInteraction();
     });
     // Handle message prompt response
     i.xapi.event.on('UserInterface.Message.Prompt.Response', (deviceId, _path, event) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handlePromptResponse(event);
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handlePromptResponse(event);
     });
     // Process active call
     i.xapi.status.on('SystemUnit.State.NumberOfActiveCalls', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handleActiveCall(result);
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handleActiveCall(result);
+    });
+    // Process MTR active call
+    i.xapi.status.on('MicrosoftTeams.Calling.InCall', (deviceId, _path, status) => {
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handleMTRCall(status);
     });
     // Process presence detection
-    i.xapi.status.on('RoomAnalytics.PeoplePresence', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handlePeoplePresence(result);
+    i.xapi.status.on('RoomAnalytics.PeoplePresence', (deviceId, _path, status) => {
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handlePeoplePresence(status);
     });
     // Process presentation detection
-    i.xapi.status.on('Conference.Presentation.LocalInstance', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handlePresentationLocalInstance(result);
+    i.xapi.status.on('Conference.Presentation.LocalInstance', (deviceId, _path, status) => {
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handlePresentationLocalInstance(status);
     });
     // Process people count
-    i.xapi.status.on('RoomAnalytics.PeopleCount.Current', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handlePeopleCount(result);
+    i.xapi.status.on('RoomAnalytics.PeopleCount.Current', (deviceId, _path, status) => {
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handlePeopleCount(status);
     });
     // Process sound level
     i.xapi.status.on('RoomAnalytics.Sound.Level.A', (deviceId, _path, result) => {
-      const rr = d[deviceId];
-      if (!rr) return;
-      rr.handleSoundDetection(result);
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handleSoundDetection(result);
     });
   } catch (error) {
-    logger.warn('Error during device and subscription processing');
+    logger.error('Error during device and subscription processing');
     logger.debug(error.message);
   }
 }

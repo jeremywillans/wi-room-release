@@ -1,6 +1,6 @@
 {
   "id": "35dd9789-d326-4082-bbec-178a961c5af5",
-  "manifestVersion": 3,
+  "manifestVersion": 4,
   "displayName": "Room Release",
   "vendor": "Jeremy Willans",
   "email": "jwillans@cisco.com",
@@ -76,6 +76,18 @@
       },
       {
         "path": "UserInterface.ContactInfo.Name",
+        "access": "required"
+      },
+      {
+        "path": "RoomAnalytics.RoomInUse",
+        "access": "required"
+      },
+      {
+        "path": "MicrosoftTeams.Calling.InCall",
+        "access": "required"
+      },
+      {
+        "path": "SystemUnit.Software.Version",
         "access": "required"
       }
     ],
