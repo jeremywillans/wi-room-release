@@ -2,6 +2,8 @@
 
 ## Room Release Workspace Integration
 
+![RoomOS-Yes](https://img.shields.io/badge/RoomOS-Integration%20&%20Macro-green.svg?style=for-the-badge&logo=cisco) ![MTR-Macro](https://img.shields.io/badge/MTR-Macro%20Only-yellow.svg?style=for-the-badge&logo=microsoftteams)
+
 Room Release is a Workspace Integration designed to automatically release a room booking based on occupancy metrics from the Cisco codec.
 
 This has been refactored from a per-device macro to instead run from a central location, ideally as a docker container, and leverages the Webex cloud xAPIs to manage and subscribe to events for your devices.
