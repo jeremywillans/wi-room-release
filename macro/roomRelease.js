@@ -307,7 +307,7 @@ class RoomRelease {
         let result;
         if (this.o.testMode) {
           if (this.o.logDetailed) console.info('Test mode enabled, booking decline skipped.');
-          result = { Status: 'Skipped (Test Mode)' };
+          result = { status: 'Skipped (Test Mode)' };
         } else {
           // attempt decline meeting to control hub
           result = await this.xapi.command('Bookings.Respond', {
