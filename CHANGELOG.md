@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.0
+- MTR Support
+
 ## 0.0.9
 - Reset countdown variable after meeting decline
 - Reduce default interval timer to 1 minute
