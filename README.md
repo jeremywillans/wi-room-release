@@ -35,6 +35,11 @@ Within the macro directory of this repository contains a macro version of this f
 
 The following items are needed, depending on the enabled services.
 
+**MTR Device Mode**
+This solution requires Control Hub registration to a workspace with the Calendar Service activated.
+
+By default, when a device is in MTR mode, calendaring is disabled - you either need to add the calendar **before** adding the MTR Device, or alternatively (and recommended) add an additional Navigator in Standalone mode, to the same workspace which will enable the calendar service.
+
 **Workspace Integration**
 1. Navigate to Workspace Integrations in [Control Hub](https://admin.webex.com/workspaces/integrations)
 2. Select `Add integration` then `Upload integration` and provide included manifest.json file - ensure you document the provided credentials
