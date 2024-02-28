@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.0
-- MTR Support
+- MTR Support (requires RoomOS 11.14+)
 - MS Teams notification support
 - Implement consolidated RoomInUse metric for occupancy detection (as default)
 

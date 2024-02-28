@@ -41,8 +41,8 @@ const e = cleanEnv(process.env, {
 });
 
 // RoomOS Version Check
-const minVersion = '11.0.0.0';
-function versionCheck(sysVersion) {
+const defVersion = '11.0.0.0';
+function versionCheck(sysVersion, minVersion = defVersion) {
   const reg = /^\D*(?<MAJOR>\d*)\.(?<MINOR>\d*)\.(?<EXTRA>\d*)\.(?<BUILD>\d*).*$/i;
   const x = (reg.exec(sysVersion)).groups;
   const y = (reg.exec(minVersion)).groups;
@@ -321,9 +321,11 @@ class RoomRelease {
         const mtrStatus = await this.xapi.command(this.deviceId, 'MicrosoftTeams.List');
         this.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
         if (!this.isRoomOS) { logger.info(`${this.id}: Device in Microsoft Mode`); }
+        // verify supported mtr version
+        if (!this.isRoomOS && !versionCheck(this.sysInfo.version, '11.14.0.0')) throw new Error('Unsupported MTR RoomOS');
       }
       // Get System Name / Contact Name
-      if (this.isRoomOS) this.sysInfo.name = await this.xapi.status.get(this.deviceId, 'UserInterface.ContactInfo.Name');
+      this.sysInfo.name = await this.xapi.status.get(this.deviceId, 'UserInterface.ContactInfo.Name');
       // Get System SN
       this.sysInfo.serial = systemUnit.Hardware.Module.SerialNumber;
       if (!this.sysInfo.name || this.sysInfo.name === '') {
