@@ -257,10 +257,10 @@ async function init(json) {
       sys.handlePromptResponse(event);
     });
     // Process active call
-    i.xapi.status.on('SystemUnit.State.NumberOfActiveCalls', (deviceId, _path, result) => {
+    i.xapi.status.on('SystemUnit.State.NumberOfActiveCalls', (deviceId, _path, status) => {
       const sys = d[deviceId];
       if (!deviceActive(sys)) return;
-      sys.handleActiveCall(result);
+      sys.handleActiveCall(status);
     });
     // Process MTR active call
     i.xapi.status.on('MicrosoftTeams.Calling.InCall', (deviceId, _path, status) => {
@@ -287,10 +287,10 @@ async function init(json) {
       sys.handlePeopleCount(status);
     });
     // Process sound level
-    i.xapi.status.on('RoomAnalytics.Sound.Level.A', (deviceId, _path, result) => {
+    i.xapi.status.on('RoomAnalytics.Sound.Level.A', (deviceId, _path, status) => {
       const sys = d[deviceId];
       if (!deviceActive(sys)) return;
-      sys.handleSoundDetection(result);
+      sys.handleSoundDetection(status);
     });
     // Process room in use
     i.xapi.status.on('RoomAnalytics.RoomInUse', (deviceId, _path, status) => {
