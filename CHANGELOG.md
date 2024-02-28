@@ -3,6 +3,7 @@
 ## 0.1.0
 - MTR Support
 - MS Teams notification support
+- Implement consolidated RoomInUse metric for occupancy detection (as default)
 
 ## 0.0.9
 - Reset countdown variable after meeting decline
