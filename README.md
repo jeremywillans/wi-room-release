@@ -54,7 +54,7 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
   - Adding `astronaut@webex.bot` to the space (bot will leave and 1:1 you the Id)
 
 **MS Teams Channel**
-- A MS Teams "Team" Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
+- A MS Teams 'Team' Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
 - Copy the Webhook URL
 
 
