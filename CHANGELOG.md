@@ -2,6 +2,7 @@
 
 ## 0.1.0
 - MTR Support
+- MS Teams notification support
 
 ## 0.0.9
 - Reset countdown variable after meeting decline

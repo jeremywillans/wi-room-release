@@ -1,8 +1,12 @@
+//
+// HTTP Service Module
+//
+
 const Axios = require('axios');
 const axiosRetry = require('axios-retry');
 const rateLimit = require('axios-rate-limit');
 const { cleanEnv, bool, num } = require('envalid');
-const logger = require('./logger')('httpService');
+const logger = require('./logger')(__filename.slice(__dirname.length + 1, -3));
 
 // Process ENV Parameters
 const env = cleanEnv(process.env, {
@@ -53,51 +57,87 @@ axiosRetry(axios, {
   },
 });
 
-function postMessage(accessToken, destId, message, format, direct, replyId) {
+function postHttp(id, headerArray, url, data) {
   return new Promise((resolve, reject) => {
-    const directMessage = direct || false;
-    const messageFormat = format || 'markdown';
+    const headers = headerArray.reduce((acc, cur) => {
+      const a = cur.split(': ');
+      [, acc[a[0]]] = a;
+      return acc;
+    }, {});
     const options = {
       method: 'POST',
-      url: 'https://webexapis.com/v1/messages',
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      data: {},
+      url,
+      headers,
+      data,
       json: true,
     };
-    if (directMessage) {
-      options.data.toPersonId = destId;
-    } else {
-      options.data.roomId = destId;
-    }
-    if (replyId) {
-      options.data.parentId = replyId;
-    }
-    options.data[messageFormat] = message;
-    if (messageFormat === 'markdown') {
-      options.data[messageFormat] = message.replace(/\\n/g, '\n');
-    }
 
     axios
       .request(options)
       .then((response) => {
-        // Check JSON payload is compliant with specs
-        if (!response.data) {
-          logger.debug('could not parse message details: bad or invalid json payload.');
-          reject(response.status);
+        // RoomOS HTTP Client Interop
+        response.StatusCode = response.status;
+        if (response.status === 204) {
+          logger.debug('postHttp noContent');
+          resolve(response);
+          return;
         }
-        logger.debug('message sent');
-        resolve();
+        // Parse Response
+        if (!response.data) {
+          logger.debug(`${id}: 'could not parse data: bad or invalid json payload.`);
+          reject(response);
+        }
+        resolve(response);
       })
       .catch((error) => {
-        logger.debug(`postMessage error: ${error.message}`);
+        logger.debug(`${id}: postHttp error: ${error.message}`);
         if (error.response && error.response.headers.trackingid) {
-          logger.debug(`tid: ${error.response.headers.trackingid}`);
+          logger.debug(`${id}: tid: ${error.response.headers.trackingid}`);
         }
         reject(error);
       });
   });
 }
-exports.postMessage = postMessage;
+exports.postHttp = postHttp;
+
+function getHttp(id, headerArray, url) {
+  const headers = headerArray.reduce((acc, cur) => {
+    const a = cur.split(': ');
+    [, acc[a[0]]] = a;
+    return acc;
+  }, {});
+  return new Promise((resolve, reject) => {
+    const options = {
+      method: 'GET',
+      url,
+      headers,
+      json: true,
+    };
+
+    axios
+      .request(options)
+      .then((response) => {
+        // RoomOS HTTP Client Interop
+        response.StatusCode = response.status;
+        if (response.status === 204) {
+          logger.debug('getHttp noContent');
+          resolve(response);
+          return;
+        }
+        // Parse Response
+        if (!response.data) {
+          logger.debug(`${id}: 'could not parse data: bad or invalid json payload.`);
+          reject(response);
+        }
+        resolve(response);
+      })
+      .catch((error) => {
+        logger.debug(`${id}: getHttp error: ${error.message}`);
+        if (error.response && error.response.headers.trackingid) {
+          logger.debug(`${id}: tid: ${error.response.headers.trackingid}`);
+        }
+        reject(error);
+      });
+  });
+}
+exports.getHttp = getHttp;

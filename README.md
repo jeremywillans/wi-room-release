@@ -31,10 +31,25 @@ Within the macro directory of this repository contains a macro version of this f
 
 ## Prerequisites
 
+The following items are needed, depending on the enabled services.
+
+**Workspace Integration**
 1. Navigate to Workspace Integrations in [Control Hub](https://admin.webex.com/workspaces/integrations)
 2. Select `Add integration` then `Upload integration` and provide included manifest.json file - ensure you document the provided credentials
 3. Navigate to the newly created Integration and select `Activate` from the `Actions` menu - ensure you document the encoded activation code
-3. Add the required Device Tag (default: `wi-room-release`) to each device to be managed by this integration
+4. Add the required Device Tag (default: `wi-room-release`) to each device to be managed by this integration
+
+**Webex Space**
+- A Webex Bot - create at [developer.webex.com](https://developer.webex.com/my-apps/new/bot) 
+- A new or existing Webex Space with the Webex bot as a member.
+- The RoomId of the destination Webex space. These example methods can be used to get the Room Id
+  - Using the [List Rooms](https://developer.webex.com/docs/api/v1/rooms/list-rooms) Developer API
+  - Adding `astronaut@webex.bot` to the space (bot will leave and 1:1 you the Id)
+
+**MS Teams Channel**
+- A MS Teams "Team" Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
+- Copy the Webhook URL
+
 
 ## Deployment (Local)
 
@@ -106,9 +121,12 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | RR_PROMPT_DURATION | no | num | `60` | (Secs) display prompt time before room declines invite
 | RR_PERIODIC_INTERVAL | no | num | `1` | (Mins) duration to perform periodic occupancy checks
 | **Webex Notification Options**
-| RR_SEND_MESSAGE | no | bool | `false` | Send message to Webex space when room released
-| RR_ROOM_ID | no | string | ` ` | Webex Messaging Space to send release notifications
-| RR_BOT_TOKEN | no | string | ` ` | Token for Bot account - must be in Space listed above!
+| RR_WEBEX_ENABLED | no | bool | `false` | Send message to Webex space when room released
+| RR_WEBEX_ROOM_ID | no | string | ` ` | Webex Messaging Space to send release notifications
+| RR_WEBEX_BOT_TOKEN | no | string | ` ` | Token for Bot account - must be in Space listed above!
+| **Teams Notification Options**
+| RR_TEAMS_ENABLED | no | bool | `false` | Send message to MS Teams channel when room released
+| RR_TEAMS_WEBHOOK | no | string | ` ` | URL for Teams Channel Incoming Webhook
 | **Other Parameters**
 | RR_TEST_MODE | no | bool | `false` | Used for testing, prevents the booking from being removed
 | RR_PlAY_ANNOUNCEMENT | no | bool | `true` | Play announcement tone during check in prompt

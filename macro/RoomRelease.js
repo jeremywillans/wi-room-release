@@ -18,6 +18,9 @@ const version = '0.1.0';
 
 const rrOptions = {
   // Occupancy Detections
+  roomInUse: true, // leverage new RoomInUse API for occupancy status
+
+  // Legacy Detection Methods (only used if roomInUse is disabled)
   detectSound: false, // Use sound level to consider room occupied (set level below)
   detectActiveCalls: true, // Use active call for detection (inc airplay)
   detectInteraction: true, // UI extensions (panel, button, etc) to detect presence.
@@ -38,9 +41,13 @@ const rrOptions = {
   periodicInterval: 1, // (Mins) duration to perform periodic occupancy checks
 
   // Webex Notification Options
-  sendMessage: false, // Send message to Webex space when room released
-  roomId: '## roomId ##', // Webex Messaging Space to send release notifications
-  botToken: '## botToken ##', // Token for Bot account - must be in Space listed above!
+  webexEnabled: false, // Send message to Webex space when room released
+  webexRoomId: '## roomId ##', // Webex Messaging Space to send release notifications
+  webexBotToken: '## botToken ##', // Token for Bot account - must be in Space listed above!
+
+  // MS Teams Notification Options
+  teamsEnabled: false, // Send message to MS Teams channel when room released
+  teamsWebhook: '## webhookUrl ##', // URL for Teams Channel Incoming Webhook
 
   // Other Parameters
   testMode: false, // used for testing, prevents the booking from being removed
@@ -51,7 +58,7 @@ const rrOptions = {
 
 // RoomOS Version Check
 const minVersion = '11.0.0.0';
-async function versionCheck(sysVersion) {
+function versionCheck(sysVersion) {
   const reg = /^\D*(?<MAJOR>\d*)\.(?<MINOR>\d*)\.(?<EXTRA>\d*)\.(?<BUILD>\d*).*$/i;
   const x = (reg.exec(sysVersion)).groups;
   const y = (reg.exec(minVersion)).groups;
@@ -67,10 +74,10 @@ async function versionCheck(sysVersion) {
 }
 
 const Header = [
-  `Authorization: Bearer ${rrOptions.botToken}`,
   'Content-Type: application/json',
   'Accept: application/json',
 ];
+const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken}`];
 
 // ----- EDIT BELOW THIS LINE AT OWN RISK ----- //
 
@@ -104,30 +111,110 @@ class RoomRelease {
   }
 
   // Post content to Webex Space
-  async postContent(booking, result) {
-    if (this.o.logDetailed) console.debug('Prepare send webex message');
+  async postWebex(booking, decline) {
+    if (this.o.logDetailed) console.debug('Process postWebex function');
     const { Booking } = booking;
-    const blockquote = result.status === 'OK' ? 'success' : 'warning';
+    const blockquote = decline.status === 'OK' ? 'success' : 'warning';
 
     let html = (`<strong>Room Release Notification</strong><blockquote class=${blockquote}><strong>System Name:</strong> ${this.sysInfo.name}<br><strong>Serial Number:</strong> ${this.sysInfo.serial}<br><strong>Platform:</strong> ${this.sysInfo.platform}`);
     let organizer = 'Unknown';
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
     html += `<br><strong>Organizer:</strong> ${organizer}`;
-    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime) : 'Unknown'}`;
-    html += `<br><strong>Decline Status:</strong> ${result.status ? result.status : 'Unknown'}`;
+    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown'}`;
+    html += `<br><strong>Decline Status:</strong> ${decline.status ? decline.status : 'Unknown'}`;
 
-    const messageContent = { roomId: this.o.roomId, html };
+    const messageContent = { roomId: this.o.webexRoomId, html };
 
     try {
-      const outcome = await this.xapi.command('HttpClient Post', { Header, Url: 'https://webexapis.com/v1/messages' }, JSON.stringify(messageContent));
-      if (outcome.StatusCode !== '200') {
-        console.error(`unexpected response code: ${outcome.StatusCode}`);
-        console.debug(`send message error: ${outcome.message}`);
+      const result = await this.xapi.command('HttpClient.Post', { Header: webexHeader, Url: 'https://webexapis.com/v1/messages' }, JSON.stringify(messageContent));
+      if (/20[04]/.test(result.StatusCode)) {
+        if (this.o.logDetailed) console.debug('postWebex message sent.');
+        return;
       }
-      if (this.o.logDetailed) console.debug('message sent.');
+      console.error(`postWebex status: ${result.StatusCode}`);
+      if (result.message && this.o.logDetailed) {
+        console.debug(`${result.message}`);
+      }
     } catch (error) {
-      console.error('error sending message');
-      console.debug(`send message error: ${error.message}`);
+      console.error('postWebex error');
+      console.debug(error.message);
+    }
+  }
+
+  // Post content to MS Teams Channel
+  async postTeams(booking, decline) {
+    if (this.o.logDetailed) console.debug('Process postTeams function');
+    const { Booking } = booking;
+    const color = decline.status === 'OK' ? 'Good' : 'Warning';
+    let organizer = 'Unknown';
+    if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
+
+    const cardBody = {
+      type: 'message',
+      attachments: [
+        {
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          content: {
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            type: 'AdaptiveCard',
+            version: '1.3',
+            body: [
+              {
+                type: 'TextBlock',
+                text: 'Room Release Notification',
+                weight: 'Bolder',
+                size: 'Medium',
+                color,
+              },
+              {
+                type: 'FactSet',
+                facts: [
+                  {
+                    title: 'System Name',
+                    value: this.sysInfo.name,
+                  },
+                  {
+                    title: 'Serial Number',
+                    value: this.sysInfo.serial,
+                  },
+                  {
+                    title: 'Platform',
+                    value: this.sysInfo.platform,
+                  },
+                  {
+                    title: 'Organizer',
+                    value: organizer,
+                  },
+                  {
+                    title: 'Start Time',
+                    value: Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown',
+                  },
+                  {
+                    title: 'Decline Status',
+                    value: decline.status ? decline.status : 'Unknown',
+                  },
+                ],
+              },
+            ],
+          },
+
+        },
+      ],
+    };
+
+    try {
+      const result = await this.xapi.command('HttpClient.Post', { Header, Url: this.o.teamsWebhook }, JSON.stringify(cardBody));
+      if (/20[04]/.test(result.StatusCode)) {
+        if (this.o.logDetailed) console.debug('postTeams message sent.');
+        return;
+      }
+      console.error(`postTeams status: ${result.StatusCode}`);
+      if (result.message && this.o.logDetailed) {
+        console.debug(`${result.message}`);
+      }
+    } catch (error) {
+      console.error('postTeams error');
+      console.debug(error.message);
     }
   }
 
@@ -198,7 +285,7 @@ class RoomRelease {
       const systemUnit = await this.xapi.status.get('SystemUnit.*');
       this.sysInfo.version = systemUnit.Software.Version;
       // verify supported version
-      if (!await versionCheck(this.sysInfo.version)) throw new Error('Unsupported RoomOS');
+      if (!versionCheck(this.sysInfo.version)) throw new Error('Unsupported RoomOS');
       // Determine device mode
       // eslint-disable-next-line no-nested-ternary
       const mtrSupported = /^true$/i.test(systemUnit.Extensions ? systemUnit.Extensions.Microsoft ? systemUnit.Extensions.Microsoft.Supported : false : false);
@@ -318,8 +405,12 @@ class RoomRelease {
           if (this.o.logDetailed) console.debug('Booking declined.');
         }
         // Post content to Webex
-        if (this.o.sendMessage) {
-          this.postContent(booking, result);
+        if (this.o.webexEnabled) {
+          this.postWebex(booking, result);
+        }
+        // Post content to MS Teams
+        if (this.o.teamsEnabled) {
+          this.postTeams(booking, result);
         }
       } catch (error) {
         console.error(`Unable to respond to meeting ${booking.Booking.MeetingId}`);
