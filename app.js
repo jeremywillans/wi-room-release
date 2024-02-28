@@ -292,6 +292,12 @@ async function init(json) {
       if (!deviceActive(sys)) return;
       sys.handleSoundDetection(result);
     });
+    // Process room in use
+    i.xapi.status.on('RoomAnalytics.RoomInUse', (deviceId, _path, status) => {
+      const sys = d[deviceId];
+      if (!deviceActive(sys)) return;
+      sys.handleRoomInUse(status);
+    });
   } catch (error) {
     logger.error('Error during device and subscription processing');
     logger.debug(error.message);

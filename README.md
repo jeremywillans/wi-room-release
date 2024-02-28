@@ -8,7 +8,9 @@ Room Release is a Workspace Integration designed to automatically release a room
 
 This has been refactored from a per-device macro to instead run from a central location, ideally as a docker container, and leverages the Webex cloud xAPIs to manage and subscribe to events for your devices.
 
-The following metrics can be used for this calculation
+This solution now leverages the new consolidated 'RoomInUse' metric which automatically determines if a room is being used based on available sources, statuses and events.
+
+If desired, the following individual metrics can be used for this calculation
 - People Presence
 - Sound Levels
 - Active Call
@@ -105,10 +107,13 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | GLOBAL_AGENT_NO_PROXY | no | string | ` ` | Comma Separated List of excluded proxy domains (Supports wildcards)
 | NODE_EXTRA_CA_CERTS | no | string | ` ` | Include extra CA Cert bundle if required, (PEM format) ensure location is attached as a volume to the container
 | **Occupancy Detections**
+| RR_ROOM_IN_USE | yes | bool | `true` | Leverage new consolidated metric to determine occupancy status
+| **Legacy Occupancy Detections**
 | RR_USE_SOUND | no | bool | `false` | Use sound level to consider room occupied (set level below)
 | RR_USE_ACTIVE_CALL | no | bool | `true` | Use active call for detection (inc airplay)
 | RR_USE_INTERACTION | no | bool | `true` | UI extensions (panel, button, etc) to detect presence.
 | RR_USE_PRESENTATION | no | bool | `true` | Use presentation sharing for detection
+| RR_SOUND_LEVEL | no | num | `50` | (dB) Minimum sound level required to consider occupied
 | **Disable Occupancy Checks**
 | RR_BUTTON_STOP_CHECKS | no | bool | `false` | Stop further occupancy checks after check in
 | RR_OCCUPIED_STOP_CHECKS | no | bool | `false` | Stop periodic checks if room considered occupied
@@ -116,7 +121,6 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | **Thresholds and Timers**
 | RR_EMPTY_BEFORE_RELEASE | no | num | `5` | (Mins) time empty until prompt for release
 | RR_INITIAL_RELEASE_DELAY | no | num | `10` | (Mins) initial delay before prompt for release
-| RR_SOUND_LEVEL | no | num | `50` | (dB) Minimum sound level required to consider occupied
 | RR_IGNORE_LONGER_THAN | no | num | `3` | (Hrs) meetings longer than this will be skipped
 | RR_PROMPT_DURATION | no | num | `60` | (Secs) display prompt time before room declines invite
 | RR_PERIODIC_INTERVAL | no | num | `1` | (Mins) duration to perform periodic occupancy checks

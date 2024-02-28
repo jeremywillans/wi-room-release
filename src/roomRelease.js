@@ -10,10 +10,13 @@ const logger = require('./logger')(__filename.slice(__dirname.length + 1, -3));
 const e = cleanEnv(process.env, {
   LOG_DETAILED: bool({ default: true }),
   // Occupancy Detections
+  RR_ROOM_IN_USE: bool({ default: true }),
+  // Legacy Occupancy Detections
   RR_USE_SOUND: bool({ default: false }),
   RR_USE_ACTIVE_CALL: bool({ default: true }),
   RR_USE_INTERACTION: bool({ default: true }),
   RR_USE_PRESENTATION: bool({ default: true }),
+  RR_SOUND_LEVEL: num({ default: 50 }), // dBA
   // Disable Occupancy Checks
   RR_BUTTON_STOP_CHECKS: bool({ default: false }),
   RR_OCCUPIED_STOP_CHECKS: bool({ default: false }),
@@ -21,7 +24,6 @@ const e = cleanEnv(process.env, {
   // Thresholds and Timers
   RR_EMPTY_BEFORE_RELEASE: num({ default: 5 }), // Minutes
   RR_INITIAL_RELEASE_DELAY: num({ default: 10 }), // Minutes
-  RR_SOUND_LEVEL: num({ default: 50 }), // dBA
   RR_IGNORE_LONGER_THAN: num({ default: 3 }), // Hours
   RR_PROMPT_DURATION: num({ default: 60 }), // Seconds
   RR_PERIODIC_INTERVAL: num({ default: 1 }), // Minutes
@@ -59,10 +61,14 @@ exports.versionCheck = versionCheck;
 // Define Room Release options from ENV Parameters
 const rrOptions = {
   // Occupancy Detections
+  roomInUse: e.RR_ROOM_IN_USE, // leverage new consolidated metric to determine occupancy status
+
+  // Legacy Occupancy Detections
   detectSound: e.RR_USE_SOUND, // Use sound level to consider room occupied (set level below)
   detectActiveCalls: e.RR_USE_ACTIVE_CALL, // Use active call for detection (inc airplay)
   detectInteraction: e.RR_USE_INTERACTION, // UI extensions (panel, button, etc) to detect presence.
   detectPresentation: e.RR_USE_PRESENTATION, // Use presentation sharing for detection
+  soundLevel: e.RR_SOUND_LEVEL, // (dB) Minimum sound level required to consider occupied
 
   // Disable Occupancy Checks
   // *NOTE* If these are both false, occupancy checks will continue for duration of meeting
@@ -73,7 +79,6 @@ const rrOptions = {
   // Thresholds and Timers
   emptyBeforeRelease: e.RR_EMPTY_BEFORE_RELEASE, // (Mins) time empty until prompt for release
   initialReleaseDelay: e.RR_EMPTY_BEFORE_RELEASE, // (Mins) initial delay before prompt for release
-  soundLevel: e.RR_SOUND_LEVEL, // (dB) Minimum sound level required to consider occupied
   ignoreLongerThan: e.RR_IGNORE_LONGER_THAN, // (Hrs) meetings longer than this will be skipped
   promptDuration: e.RR_PROMPT_DURATION, // (Secs) display prompt time before room declines invite
   periodicInterval: e.RR_PERIODIC_INTERVAL, // (Mins) duration to perform periodic occupancy checks
@@ -345,6 +350,12 @@ class RoomRelease {
 
   // Determine if room is occupied based on enabled detections
   isRoomOccupied() {
+    if (this.o.roomInUse) {
+      const currentStatus = this.metrics.roomInUse;
+      if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
+      return currentStatus;
+    }
+    // Legacy Occupancy Calculations
     if (this.o.logDetailed) {
       let message = `${this.id}: Presence: ${this.metrics.peoplePresence} | Count: ${this.metrics.peopleCount}`;
       message += ` | [${this.o.detectActiveCalls ? 'X' : ' '}] In Call: ${this.metrics.inCall}`;
@@ -462,6 +473,12 @@ class RoomRelease {
   // Poll codec to retrieve updated metrics
   async getMetrics(processResults = true) {
     try {
+      if (this.o.roomInUse) {
+        const roomInUse = await this.xapi.status.get(this.deviceId, 'RoomAnalytics.RoomInUse');
+        this.metrics.roomInUse = /^true$/i.test(roomInUse);
+        if (processResults) this.processOccupancy();
+        return;
+      }
       const metricArray = [this.getData('RoomAnalytics.*')];
       if (this.isRoomOS) {
         metricArray.push(this.getData('SystemUnit.State.NumberOfActiveCalls'));
@@ -648,7 +665,7 @@ class RoomRelease {
   }
 
   handleActiveCall(status) {
-    if (this.bookingIsActive) {
+    if (this.bookingIsActive && !this.o.roomInUse) {
       if (this.o.logDetailed) logger.debug(`${this.id}: Number of active calls: ${status}`);
       const inCall = Number(status) > 0;
       this.metrics.inCall = inCall;
@@ -660,7 +677,7 @@ class RoomRelease {
   }
 
   handleMTRCall(event) {
-    if (this.bookingIsActive) {
+    if (this.bookingIsActive && !this.o.roomInUse) {
       const result = /^true$/i.test(event);
       if (this.o.logDetailed) logger.debug(`Active MTR Call: ${result}`);
       this.metrics.inCall = result;
@@ -672,7 +689,7 @@ class RoomRelease {
   }
 
   handlePeoplePresence(status) {
-    if (this.bookingIsActive) {
+    if (this.bookingIsActive && !this.o.roomInUse) {
       if (this.o.logDetailed) logger.debug(`${this.id}: Presence: ${status}`);
       const people = status === 'Yes';
       this.metrics.peoplePresence = people;
@@ -684,7 +701,7 @@ class RoomRelease {
   }
 
   handlePeopleCount(status) {
-    if (this.bookingIsActive) {
+    if (this.bookingIsActive && !this.o.roomInUse) {
       if (this.o.logDetailed) logger.debug(`${this.id}: People count: ${status}`);
       const people = Number(status);
       this.metrics.peopleCount = people === -1 ? 0 : people;
@@ -697,7 +714,7 @@ class RoomRelease {
 
   handleSoundDetection(status) {
     // Only process when enabled to reduce log noise
-    if (this.bookingIsActive && this.o.detectSound) {
+    if (this.bookingIsActive && this.o.detectSound && !this.o.roomInUse) {
       if (this.o.logDetailed) logger.debug(`${this.id}: Sound level: ${status}`);
       const level = Number(status);
       this.metrics.presenceSound = level > this.o.soundLevel;
@@ -709,7 +726,7 @@ class RoomRelease {
   }
 
   handlePresentationLocalInstance(status) {
-    if (this.bookingIsActive) {
+    if (this.bookingIsActive && !this.o.roomInUse) {
       if (status.ghost) {
         if (this.o.logDetailed) logger.debug(`${this.id}: Presentation stopped`);
         this.metrics.sharing = false;
@@ -725,11 +742,23 @@ class RoomRelease {
   }
 
   handleInteraction() {
-    if (this.bookingIsActive && this.o.detectInteraction) {
+    if (this.bookingIsActive && this.o.detectInteraction && !this.o.roomInUse) {
       if (this.o.logDetailed) logger.debug(`${this.id}: UI interaction detected`);
 
       this.lastFullTimestamp = Date.now();
       this.lastEmptyTimestamp = 0;
+
+      if (this.listenerShouldCheck) {
+        this.processOccupancy();
+      }
+    }
+  }
+
+  handleRoomInUse(status) {
+    if (this.bookingIsActive && this.o.roomInUse) {
+      const result = /^true$/i.test(status);
+      if (this.o.logDetailed) logger.debug(`RoomInUse: ${result}`);
+      this.metrics.roomInUse = result;
 
       if (this.listenerShouldCheck) {
         this.processOccupancy();
