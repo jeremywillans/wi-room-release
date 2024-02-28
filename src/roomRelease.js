@@ -318,8 +318,13 @@ class RoomRelease {
       // eslint-disable-next-line no-nested-ternary
       const mtrSupported = /^true$/i.test(systemUnit.Extensions ? systemUnit.Extensions.Microsoft ? systemUnit.Extensions.Microsoft.Supported : false : false);
       if (mtrSupported) {
-        const mtrStatus = await this.xapi.command(this.deviceId, 'MicrosoftTeams.List');
-        this.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
+        try {
+          const mtrStatus = await this.xapi.command(this.deviceId, 'MicrosoftTeams.List');
+          this.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
+        } catch (error) {
+          // Command fails on Cloud XAPI for MTR Mode RoomOS 11.13 or below
+          this.isRoomOS = false;
+        }
         if (!this.isRoomOS) { logger.info(`${this.id}: Device in Microsoft Mode`); }
         // verify supported mtr version
         if (!this.isRoomOS && !versionCheck(this.sysInfo.version, '11.14.0.0')) throw new Error('Unsupported MTR RoomOS');
