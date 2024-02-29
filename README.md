@@ -35,25 +35,25 @@ Within the macro directory of this repository contains a macro version of this f
 
 The following items are needed, depending on the enabled services.
 
-**MTR Device Mode**
+### MTR Device Mode
 This solution requires Control Hub registration to a workspace with the Calendar Service activated.
 
 By default, when a device is in MTR mode, calendaring is disabled - you either need to add the calendar **before** adding the MTR Device, or alternatively (and recommended) add an additional Navigator in Standalone mode, to the same workspace which will enable the calendar service.
 
-**Workspace Integration**
+### Workspace Integration
 1. Navigate to Workspace Integrations in [Control Hub](https://admin.webex.com/workspaces/integrations)
 2. Select `Add integration` then `Upload integration` and provide included manifest.json file - ensure you document the provided credentials
 3. Navigate to the newly created Integration and select `Activate` from the `Actions` menu - ensure you document the encoded activation code
 4. Add the required Device Tag (default: `wi-room-release`) to each device to be managed by this integration
 
-**Webex Space**
+### Webex Space
 - A Webex Bot - create at [developer.webex.com](https://developer.webex.com/my-apps/new/bot) 
 - A new or existing Webex Space with the Webex bot as a member.
 - The RoomId of the destination Webex space. These example methods can be used to get the Room Id
   - Using the [List Rooms](https://developer.webex.com/docs/api/v1/rooms/list-rooms) Developer API
   - Adding `astronaut@webex.bot` to the space (bot will leave and 1:1 you the Id)
 
-**MS Teams Channel**
+### MS Teams Channel
 - A MS Teams 'Team' Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
 - Copy the Webhook URL
 
