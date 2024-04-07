@@ -172,7 +172,7 @@ function postGraphToken() {
     axios.request(options)
       .then((response) => {
         try {
-          resolve(response.data.access_token);
+          resolve(response.data);
         } catch (error) {
           logger.debug('token not returnable');
           logger.debug(response);

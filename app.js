@@ -174,9 +174,6 @@ function deviceActive(sys) {
 async function init(json) {
   logger.info(`Room Release Workspace Integration, v${version}`);
   let i;
-  if (e.GRAPH_ENABLED) {
-    global.graphToken = await httpService.postGraphToken();
-  }
   const d = {}; // Device Entities Object
   // Process integration credentials
   if (!e.OAUTH_URL) {
@@ -188,8 +185,11 @@ async function init(json) {
       process.exit(1);
     }
   }
-  // Initialize Graph Store
+  // Initialize Graph Store and verify token retrieval.
   if (e.GRAPH_ENABLED) {
+    logger.info('--- Generating MS Graph Access Token');
+    global.graph = await httpService.postGraphToken();
+    global.graph.expires = new Date(Date.now() + ((global.graph.expires_in - 60) * 1000));
     await fileService.init();
   }
   try {
@@ -213,14 +213,6 @@ async function init(json) {
       logger.info('--- Periodic Device Processing');
       await processDevices(i, d);
     });
-
-    // Periodically re-process graph api token (every 50 mins)
-    if (e.GRAPH_ENABLED) {
-      schedule.scheduleJob('55 * * * *', async () => {
-        logger.info('--- Refresh MS Graph Access Token');
-        global.graphToken = await httpService.postGraphToken();
-      });
-    }
 
     logger.info('--- Processing WI Subscriptions');
     // Process device ready

@@ -112,14 +112,23 @@ const Header = [
 ];
 const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken}`];
 
+async function checkGraphToken(id, h) {
+  const dateFiveMinutes = new Date(Date.now() + (300 * 1000));
+  if (!global.graph || global.graph.expires < dateFiveMinutes) {
+    logger.debug(`${id}: Refreshing Global MS Graph Access Token`);
+    global.graph = await h.postGraphToken();
+  }
+}
+
 // Graph API Series Processing
 async function processGraph(id, h, f, deviceId, email, booking) {
   let outcome = false;
   try {
+    await checkGraphToken(id, h);
     const startTime = booking.Booking.Time.StartTime;
     const endTime = booking.Booking.Time.EndTime;
     let url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/calendarView?startDateTime=${startTime}&endDateTime=${endTime}`;
-    let graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+    let graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
     let event = await h.getHttp(id, graphHeader, url);
     if (event.data && event.data.value && event.data.value.length === 1) {
       [event] = event.data.value;
@@ -147,7 +156,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
           seriesEnd = seriesEnd.toISOString();
           // Get Series Exceptions
           url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
-          graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+          graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
           const exceptions = await h.getHttp(id, graphHeader, url);
           const exceptionArray = exceptions.data.value;
           const data = {
@@ -161,7 +170,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
               for await (const exception of exceptionArray) {
                 try {
                   const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
-                  graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+                  graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
                   await h.postHttp(id, graphHeader, url1, data);
                 } catch (error) {
                   logger.debug(`${id}: Unable to decline series exception ${exception.id}`);
@@ -171,7 +180,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
             }
             // Decline Series Master
             url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/decline`;
-            graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+            graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
             await h.postHttp(id, graphHeader, url, data);
             logger.debug(`${id}: Series Declined.`);
             outcome = true;
