@@ -34,6 +34,10 @@ const e = cleanEnv(process.env, {
   // MS Teams Notification Options
   RR_TEAMS_ENABLED: bool({ default: false }),
   RR_TEAMS_WEBHOOK: str({ default: undefined }),
+  // Graph API Options
+  GRAPH_ENABLED: bool({ default: false }),
+  GRAPH_STRIKES: num({ default: 3 }),
+  GRAPH_CALENDAR_YEARS: num({ default: 3 }),
   // Other Parameters
   RR_TEST_MODE: bool({ default: false }),
   RR_PlAY_ANNOUNCEMENT: bool({ default: true }),
@@ -92,6 +96,9 @@ const rrOptions = {
   teamsEnabled: e.RR_TEAMS_ENABLED, // Send message to MS Teams channel when room released
   teamsWebhook: e.RR_TEAMS_WEBHOOK, // URL for Teams Channel Incoming Webhook
 
+  // Graph API Options
+  graphEnabled: e.GRAPH_ENABLED, // Track series ghost bookings, decline if exceeds strike threshold
+
   // Other Parameters
   testMode: e.RR_TEST_MODE, // used for testing, prevents the booking from being removed
   playAnnouncement: e.RR_PlAY_ANNOUNCEMENT, // Play announcement tone during check in prompt
@@ -105,12 +112,92 @@ const Header = [
 ];
 const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken}`];
 
+// Graph API Series Processing
+async function processGraph(id, h, f, deviceId, email, booking) {
+  let outcome = false;
+  try {
+    const startTime = booking.Booking.Time.StartTime;
+    const endTime = booking.Booking.Time.EndTime;
+    let url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/calendarView?startDateTime=${startTime}&endDateTime=${endTime}`;
+    let graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+    let event = await h.getHttp(id, graphHeader, url);
+    if (event.data && event.data.value && event.data.value.length === 1) {
+      [event] = event.data.value;
+      // Check if Event contains a Series Master (aka part of a Series)
+      if (event.seriesMasterId) {
+        logger.debug(`${id}: Ghosted Booking from Series, updating Store`);
+        const store = await f.getStore(deviceId);
+        if (!store[event.seriesMasterId]) {
+          store[event.seriesMasterId] = {
+            strikes: 0,
+          };
+        }
+        store[event.seriesMasterId].strikes += 1;
+        // Compare Store Strikes count against configured ENV Value (default 3)
+        if (store[event.seriesMasterId].strikes >= e.GRAPH_STRIKES) {
+          logger.debug(`${id}: Series exceeded Strike Rule - Declining`);
+          // Get Series Master
+          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}`;
+          graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+          const master = await h.getHttp(id, graphHeader, url);
+          const { range } = master.data.recurrence;
+          const seriesStart = new Date(range.startDate).toISOString();
+          let seriesEnd = new Date(range.startDate);
+          seriesEnd.setFullYear(seriesEnd.getFullYear() + e.GRAPH_CALENDAR_YEARS);
+          seriesEnd = seriesEnd.toISOString();
+          // Get Series Exceptions
+          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
+          graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+          const exceptions = await h.getHttp(id, graphHeader, url);
+          const exceptionArray = exceptions.data.value;
+          const data = {
+            comment: 'Series declined by room due to exceeding Ghost Booking limit.',
+          };
+          try {
+            if (exceptionArray.length) {
+              // Process Series Exceptions first, ensuring calendar correctly shows room as declined
+              logger.debug(`${id}: Series exceptions identified, attempting individual decline first.`);
+              // eslint-disable-next-line no-restricted-syntax
+              for await (const exception of exceptionArray) {
+                try {
+                  const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
+                  graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+                  await h.postHttp(id, graphHeader, url1, data);
+                } catch (error) {
+                  logger.debug(`${id}: Unable to decline series exception ${exception.id}`);
+                }
+              }
+              logger.debug(`${id}: Series exceptions declined.`);
+            }
+            // Decline Series Master
+            url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/decline`;
+            graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
+            await h.postHttp(id, graphHeader, url, data);
+            logger.debug(`${id}: Series Declined.`);
+            outcome = true;
+            delete store[event.seriesMasterId];
+          } catch (error) {
+            logger.debug(`${id}: Unable to decline Series Master ${event.seriesMasterId}`);
+          }
+        }
+        f.updateStore(deviceId, store);
+      }
+    }
+  } catch (error) {
+    logger.error(`${id}: Error interacting with Graph API`);
+    logger.debug(`${id}: ${error.message}`);
+  }
+  return outcome;
+}
+
 // Room Release Class - Instantiated per Device
 class RoomRelease {
-  constructor(i, id, deviceId, httpService) {
+  constructor(i, id, deviceId, email, httpService, fileService) {
     this.id = id;
     this.deviceId = deviceId;
     this.h = httpService;
+    this.f = fileService;
+    this.email = email;
     this.active = false;
     this.xapi = i.xapi;
     this.o = rrOptions;
@@ -449,13 +536,21 @@ class RoomRelease {
           if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
           result = { status: 'Skipped (Test Mode)' };
         } else {
-          // attempt decline meeting to control hub
-          result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
-            Type: 'Decline',
-            MeetingId: booking.Booking.MeetingId,
-          });
+          let graph = false;
+          if (this.o.graphEnabled && this.ghost) {
+            graph = await processGraph(this.id, this.h, this.f, this.deviceId, this.email, booking);
+          }
+          if (graph) {
+            result = { status: 'Series Declined using Graph API' };
+          } else {
+            // attempt decline meeting to control hub
+            result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
+              Type: 'Decline',
+              MeetingId: booking.Booking.MeetingId,
+            });
 
-          if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
+            if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
+          }
         }
         // Post content to Webex
         if (this.o.webexEnabled) {

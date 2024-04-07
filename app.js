@@ -16,6 +16,7 @@ const logger = require('./src/logger')('app');
 const utils = require('./src/utils');
 const roomRelease = require('./src/roomRelease');
 const httpService = require('./src/httpService');
+const fileService = require('./src/fileService');
 const { name, version } = require('./package.json');
 
 // Process ENV Parameters
@@ -35,6 +36,8 @@ const e = cleanEnv(process.env, {
   // Global Agent Proxy
   GLOBAL_AGENT_HTTP_PROXY: str({ default: undefined }),
   GLOBAL_AGENT_NO_PROXY: str({ default: undefined }),
+  // Microsoft Graph API
+  GRAPH_ENABLED: bool({ default: false }),
 });
 
 // Initialize Proxy Server, if defined.
@@ -80,9 +83,14 @@ async function processDevice(i, d, deviceId, deviceObj) {
     if (e.LOG_DETAILED) logger.warn(`Skipping Device ${utils.shortName(deviceId)} - Unsupported RoomOS`);
     return;
   }
+  let email = false;
+  const workspace = await i.workspaces.getWorkspace(device.workspaceId);
+  if (workspace.calendar) {
+    email = workspace.calendar.emailAddress;
+  }
   // Declare Class
   const id = utils.uniqueId(d, deviceId.replace('=', ''));
-  d[deviceId] = new roomRelease.Init(i, id, deviceId, httpService);
+  d[deviceId] = new roomRelease.Init(i, id, deviceId, email, httpService, fileService);
   logger.info(`${d[deviceId].id}: ${utils.shortName(deviceId)}`);
   logger.info(`${d[deviceId].id}: Creating Instance for ${device.displayName}.`);
   try {
@@ -166,6 +174,9 @@ function deviceActive(sys) {
 async function init(json) {
   logger.info(`Room Release Workspace Integration, v${version}`);
   let i;
+  if (e.GRAPH_ENABLED) {
+    global.graphToken = await httpService.postGraphToken();
+  }
   const d = {}; // Device Entities Object
   // Process integration credentials
   if (!e.OAUTH_URL) {
@@ -176,6 +187,10 @@ async function init(json) {
       logger.debug(error.message);
       process.exit(1);
     }
+  }
+  // Initialize Graph Store
+  if (e.GRAPH_ENABLED) {
+    await fileService.init();
   }
   try {
     i = await wi.connect(json);
@@ -198,6 +213,14 @@ async function init(json) {
       logger.info('--- Periodic Device Processing');
       await processDevices(i, d);
     });
+
+    // Periodically re-process graph api token (every 50 mins)
+    if (e.GRAPH_ENABLED) {
+      schedule.scheduleJob('55 * * * *', async () => {
+        logger.info('--- Refresh MS Graph Access Token');
+        global.graphToken = await httpService.postGraphToken();
+      });
+    }
 
     logger.info('--- Processing WI Subscriptions');
     // Process device ready

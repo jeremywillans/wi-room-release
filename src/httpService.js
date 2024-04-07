@@ -5,13 +5,17 @@
 const Axios = require('axios');
 const axiosRetry = require('axios-retry');
 const rateLimit = require('axios-rate-limit');
-const { cleanEnv, bool, num } = require('envalid');
+// eslint-disable-next-line object-curly-newline
+const { cleanEnv, str, bool, num } = require('envalid');
 const logger = require('./logger')(__filename.slice(__dirname.length + 1, -3));
 
 // Process ENV Parameters
 const env = cleanEnv(process.env, {
   LOG_DETAILED: bool({ default: true }),
   RR_HTTP_TIMEOUT: num({ default: 60000 }), // Milliseconds
+  GRAPH_TENANT: str({ default: undefined }),
+  GRAPH_CLIENT_ID: str({ default: undefined }),
+  GRAPH_CLIENT_SECRET: str({ default: undefined }),
 });
 
 const axios = rateLimit(
@@ -82,9 +86,14 @@ function postHttp(id, headerArray, url, data) {
           resolve(response);
           return;
         }
+        if (response.status === 202) {
+          logger.debug('postHttp Accepted');
+          resolve(response);
+          return;
+        }
         // Parse Response
         if (!response.data) {
-          logger.debug(`${id}: 'could not parse data: bad or invalid json payload.`);
+          logger.debug(`${id}: could not parse data: bad or invalid json payload.`);
           reject(response);
         }
         resolve(response);
@@ -141,3 +150,39 @@ function getHttp(id, headerArray, url) {
   });
 }
 exports.getHttp = getHttp;
+
+function postGraphToken() {
+  return new Promise((resolve, reject) => {
+    const data = {
+      grant_type: 'client_credentials',
+      scope: 'https://graph.microsoft.com/.default',
+      client_id: env.GRAPH_CLIENT_ID,
+      client_secret: env.GRAPH_CLIENT_SECRET,
+    };
+    const options = {
+      method: 'POST',
+      url: `https://login.microsoftonline.com/${env.GRAPH_TENANT}/oauth2/v2.0/token`,
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      data,
+      json: true,
+    };
+
+    axios.request(options)
+      .then((response) => {
+        try {
+          resolve(response.data.access_token);
+        } catch (error) {
+          logger.debug('token not returnable');
+          logger.debug(response);
+          reject(error);
+        }
+      })
+      .catch((error) => {
+        logger.debug(`postGraphToken error: ${error.message}`);
+        reject(error);
+      });
+  });
+}
+exports.postGraphToken = postGraphToken;
