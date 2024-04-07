@@ -185,13 +185,7 @@ async function init(json) {
       process.exit(1);
     }
   }
-  // Initialize Graph Store and verify token retrieval.
-  if (e.GRAPH_ENABLED) {
-    logger.info('--- Generating MS Graph Access Token');
-    global.graph = await httpService.postGraphToken();
-    global.graph.expires = new Date(Date.now() + ((global.graph.expires_in - 60) * 1000));
-    await fileService.init();
-  }
+
   try {
     i = await wi.connect(json);
     i.onError(logger.error);
@@ -201,6 +195,14 @@ async function init(json) {
     logger.error('Not able to connect to Integration');
     logger.debug(error.message);
     process.exit(1);
+  }
+
+  // Initialize Graph Store and verify token retrieval.
+  if (e.GRAPH_ENABLED) {
+    logger.info('--- Generating MS Graph Access Token');
+    global.graph = await httpService.postGraphToken();
+    global.graph.expires = new Date(Date.now() + ((global.graph.expires_in - 60) * 1000));
+    await fileService.init();
   }
 
   try {
