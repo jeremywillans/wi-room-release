@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+- Ghosted meeting status check
+- Series Decline support using MS Graph API
+- Fix periodic check cron timer
+- Bump deps
+
 ## 0.1.0
 - MTR Support (requires RoomOS 11.14+)
 - MS Teams notification support
