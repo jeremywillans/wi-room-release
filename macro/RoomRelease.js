@@ -14,7 +14,7 @@
 // eslint-disable-next-line import/no-unresolved
 import xapi from 'xapi';
 
-const version = '0.1.0';
+const version = '0.2.0';
 
 const rrOptions = {
   // Occupancy Detections
