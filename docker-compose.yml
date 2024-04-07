@@ -4,24 +4,16 @@ services:
   wi-room-release:
     image: jeremywillans/wi-room-release:latest
     container_name: wi-room-release
-    environment:
-      # REPLACE BELOW WITH PREREQUISITE VARIABLES 
-      CLIENT_ID: XXXXXXXXXXXXXXXXX
-      CLIENT_SECRET: XXXXXXXXXXXXXXXXX
-      CODE: XXXXXXXXXXXXXXXXX
-      # INCREASE LOGGING VISIBILITY DURING TESTING
-      CONSOLE_LEVEL: debug
-      WI_LOGGING: info
-      LOG_DETAILED: 'true'
-      # SPEED UP RELEASE TIMES DURING TESTING
-      RR_EMPTY_BEFORE_RELEASE: 1
-      RR_INITIAL_RELEASE_DELAY: 1
-      RR_PERIODIC_INTERVAL: 0.5
-      # PREVENT BOOKING DECLINE DURING TESTING
-      RR_TEST_MODE: 'true'
+    env_file:
+      - .env
+    volumes:
+      - room-release-config:/config
     restart: unless-stopped
     networks:
       - internal
+
+volumes:
+  room-release-config:
 
 networks:
   internal:
