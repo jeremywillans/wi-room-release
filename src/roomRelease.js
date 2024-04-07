@@ -173,7 +173,8 @@ async function processGraph(id, h, f, deviceId, email, booking) {
                   graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
                   await h.postHttp(id, graphHeader, url1, data);
                 } catch (error) {
-                  logger.debug(`${id}: Unable to decline series exception ${exception.id}`);
+                  logger.error(`${id}: Unable to decline series exception ${exception.id}`);
+                  logger.debug(`${id}: ${error.message}`);
                 }
               }
               logger.debug(`${id}: Series exceptions declined.`);
@@ -186,7 +187,8 @@ async function processGraph(id, h, f, deviceId, email, booking) {
             outcome = true;
             delete store[event.seriesMasterId];
           } catch (error) {
-            logger.debug(`${id}: Unable to decline Series Master ${event.seriesMasterId}`);
+            logger.error(`${id}: Unable to decline Series Master ${master.id}`);
+            logger.debug(`${id}: ${error.message}`);
           }
         }
         f.updateStore(deviceId, store);
