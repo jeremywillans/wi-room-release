@@ -124,6 +124,8 @@ class RoomRelease {
     this.countdownActive = false;
     this.listenerShouldCheck = true;
     this.roomIsEmpty = false;
+    this.ghost = true;
+    this.ghostTimeout = null;
     this.lastFullTimestamp = 0;
     this.lastEmptyTimestamp = 0;
     this.initialDelay = 0;
@@ -148,6 +150,7 @@ class RoomRelease {
     let organizer = 'Unknown';
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
     html += `<br><strong>Organizer:</strong> ${organizer}`;
+    html += `<br><strong>Ghosted:</strong> ${this.ghost ? 'Yes' : 'No'}`;
     html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown'}`;
     html += `<br><strong>Decline Status:</strong> ${decline.status ? decline.status : 'Unknown'}`;
 
@@ -212,6 +215,10 @@ class RoomRelease {
                   {
                     title: 'Organizer',
                     value: organizer,
+                  },
+                  {
+                    title: 'Ghosted',
+                    value: this.ghost ? 'Yes' : 'No',
                   },
                   {
                     title: 'Start Time',
@@ -359,7 +366,8 @@ class RoomRelease {
   isRoomOccupied() {
     if (this.o.roomInUse) {
       const currentStatus = this.metrics.roomInUse;
-      if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
+      if (currentStatus) this.ghost = false;
+      if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus} GHOST: ${this.ghost}`);
       return currentStatus;
     }
     // Legacy Occupancy Calculations
@@ -375,7 +383,8 @@ class RoomRelease {
       || (this.o.detectSound && this.metrics.presenceSound) // Sound detection
       || (this.o.detectPresentation && this.metrics.sharing); // Presentation detection
 
-    if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus}`);
+    if (currentStatus) this.ghost = false;
+    if (this.o.logDetailed) logger.debug(`${this.id}: OCCUPIED: ${currentStatus} GHOST: ${this.ghost}`);
     return currentStatus;
   }
 
@@ -582,6 +591,13 @@ class RoomRelease {
     }
   }
 
+  resetGhost() {
+    logger.debug(`${this.id}: Ghost status reset`);
+    this.ghost = true;
+    clearTimeout(this.ghostTimeout);
+    this.processOccupancy();
+  }
+
   // Process meeting logic
   async processBooking(id) {
     // Validate booking
@@ -617,6 +633,19 @@ class RoomRelease {
 
         // get initial occupancy data from the codec
         await this.getMetrics();
+
+        this.ghost = true;
+        // if room is occupied - reset ghost status at initial release delay or 4 minute mark
+        // (which ever comes first) to ensure previous occupants are not counted in ghost check
+        if (this.isRoomOccupied()) {
+          const ghostDelay = Math.min(4, this.o.initialReleaseDelay - 0.2);
+          logger.debug(`${this.id}: existing occupancy detected - enabling ${ghostDelay}min ghost delay`);
+          clearTimeout(this.ghostTimeout);
+          this.ghostTimeout = setTimeout(
+            this.resetGhost.bind(this),
+            (ghostDelay * 60000),
+          );
+        }
 
         // Update checks to periodically validate room status.
         clearInterval(this.periodicUpdate);
@@ -665,6 +694,8 @@ class RoomRelease {
     clearInterval(this.periodicUpdate);
     this.clearAlerts();
     this.bookingIsActive = false;
+    this.ghost = true;
+    clearTimeout(this.ghostTimeout);
     this.listenerShouldCheck = false;
     this.initialDelay = 0;
     this.lastFullTimestamp = 0;
