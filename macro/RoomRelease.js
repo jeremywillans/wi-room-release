@@ -438,6 +438,7 @@ class RoomRelease {
       this.lastEmptyTimestamp = 0;
       this.roomIsEmpty = false;
       this.countdownActive = false;
+      if (this.o.logDetailed) console.debug('Release complete.');
     }, this.o.promptDuration * 1000);
   }
 

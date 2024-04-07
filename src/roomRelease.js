@@ -474,6 +474,7 @@ class RoomRelease {
       this.lastEmptyTimestamp = 0;
       this.roomIsEmpty = false;
       this.countdownActive = false;
+      if (this.o.logDetailed) logger.debug(`${this.id}: Release complete.`);
     }, (this.o.promptDuration * 1000) + 2000); // 2 second delay to allow for xAPI processing
   }
 
