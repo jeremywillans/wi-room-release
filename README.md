@@ -28,6 +28,11 @@ Periodic check of devices occurs every 30 minutes (on the half/hour intervals) t
 
 The process flow for how this works is included below.
 
+**0.2 Updates** 
+Ghosted meetings are now checked when a meeting commences and the status included for Webex and MS Teams outputs. 
+
+You can now optionally choose to decline a Meeting Series if multiple ghost booking occur (default `3`). This uses the Microsoft Graph API to decline the Series. A local json file is stored with container (default `/config/graph.json`, recommend attach as a volume) which tracks devices and Series which have had a ghost booking.
+
 ## Macro Version
 Within the macro directory of this repository contains a macro version of this for individual device deployment, if preferred. As the underlying code is shared between both the macro and the Workspace Integration, it will be maintained in the same repository for consistency.
 
@@ -57,6 +62,15 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
 - A MS Teams 'Team' Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
 - Copy the Webhook URL
 
+### MS Graph - Series Decline
+- Microsoft Entra Tenant Id
+- Create a new App Registration in Microsoft Entra
+  - Type: `Accounts in any organizational directory (Any Azure AD directory - Multitenant)`
+  - Redirect URI: Web Platform, `https://login.microsoftonline.com/common/oauth2/nativeclient`
+  - Client ID: Copy from Overview Page
+  - Client Secret: Generate from Certificates & secrets section - TAKE NOTE OF LIFETIME!
+  - API Permissions: Graph API: Application Permissions: `Calendars.ReadWrite`
+  - Admin needs to Grant Permission
 
 ## Deployment (Local)
 
@@ -64,6 +78,7 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
 2. Run `npm install` to add the require dependencies (ensure Node and NPM are installed)
 3. Create an `.env` file and include the required variables outlined below.
 - Recommend adding `WI_LOGGING=info`, `CONSOLE_LEVEL=debug`, `LOG_DETAILED=true` and `RR_TEST_MODE=true` during initial testing
+4. (Optional) Create a directory called `config` which is used to store a listing of device instances for series decline, if enabling the MS Graph option.
 4. Start the integration using `npm run start`
 5. Review the console logs to confirm no errors encountered
 
@@ -72,7 +87,8 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
 The simplest deployment method is using [Docker](https://docs.docker.com/engine/install/) and [Docker Compose](https://docs.docker.com/compose/install/)
 
 1. Clone / Download repository
-2. Update the included docker-compose.yml file with the correct Environmental parameters
+   - Only sample.env and docker-compose.yml are needed if using prebuilt docker image
+2. Rename `sample.env` to `.env` file and update the environment variables outlined below.
 3. - Use the prebuilt image available on Docker Hub (included in docker-compose.yml)
    - Build the Docker Image using `docker build --tag wi-room-release .` and update image line in docker-compose.yml
 4. Provision and start the Integration using `docker-compose up -d`
@@ -136,6 +152,14 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | **Teams Notification Options**
 | RR_TEAMS_ENABLED | no | bool | `false` | Send message to MS Teams channel when room released
 | RR_TEAMS_WEBHOOK | no | string | ` ` | URL for Teams Channel Incoming Webhook
+| **Graph API Options**
+| GRAPH_ENABLED | no | string | ` ` |  Track series ghost bookings, decline if exceeds strike threshold
+| GRAPH_STRIKES | no | num | `3` | Number of ghost bookings before the series is declined
+| GRAPH_TENANT | no | string | ` ` | Tenant ID from MS Entra app registration
+| GRAPH_CLIENT_ID | no | string | ` ` | Client ID from MS Entra app registration
+| GRAPH_CLIENT_SECRET | no | string | ` ` | Client Secret from MS Entra app registration
+| GRAPH_JSON | no | str | `config/graph.json` | Location of graph store JSON file
+| GRAPH_CALENDAR_YEARS | no | num | `3` | Number of years ahead to search for Series Exceptions
 | **Other Parameters**
 | RR_TEST_MODE | no | bool | `false` | Used for testing, prevents the booking from being removed
 | RR_PlAY_ANNOUNCEMENT | no | bool | `true` | Play announcement tone during check in prompt
@@ -153,10 +177,13 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 - The meeting is processed to determine duration, calculate the initial delay and is marked as active.
 - If the meeting is longer than `ignoreLongerThan` duration, no further action is taken.
 - Initial occupancy data is retrieved from the Codec and processed to determine current room status. 
+- Ghost status by default is set to true for the booking.
+- If occupancy is detected at booking start, a ghost delay is added to reset at 4 minutes or just before initialReleaseDelay (which ever is first) in an attempt to prevent the previous meeting occupants from invalidating the ghost option
 - Based on occupied/empty status from the processing of metrics, the appropriate timestamp (last empty or full) is recorded to track room status
 - Once a booking is marked active, the subscriptions for occupancy metrics are processed when there are changes detected (presence, sound, active call, etc.)
 - When metrics changes are detected, the value for the affected metric is updated. If the metric is enabled, then the occupancy metrics are reprocessed.
 - To ensure accurate occupancy and timestamps are kept, at the `periodicInterval`, new occupancy metrics are retrieved from the device and reprocessed.
+- If any occupancy is detected in the room (after the ghost delay, if enabled) then the ghost option is set to false
 #### Room Empty
 - A room is considered empty if the current timestamp exceeds the last empty timestamp combined with the value of `emptyBeforeRelease`.
 - Additionally, there `initialReleaseDelay` time needs to be met/exceeded. this is calculated from meeting start time.
@@ -165,6 +192,9 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 - If pressed, the room full timestamp will be updated with the current time, and checks will continue.
 - If `buttonStopChecks` is enabled, checks will stop and no further action is taken.
 - If the check in button is **not** pressed, and no occupancy changes are detected in the room, the booking will be declined and removed from the calendar.
+- If the meeting is deemed ghosted (ghost option is still true) and the graph api option is enabled, then a check will be performed to determine if this meeting is part of a series. If it is, then it will be recorded a strike against the series master in the graph.json file.
+- If the Graph API strike condition is met (default `3`), then the Graph API will be used to locate and decline individual series exceptions (default search based on `3` years), and then decline the whole series from the room calendar.
+- We specifically decline the exceptions first to ensure the response is correctly updated to 'No' in the Organizers calendar.
 #### Room Occupied
 - A room is considered full if the current timestamp exceeds the last full timestamp combined with the value of `consideredOccupied`.
 - Once a room is considered full and `occupiedStopChecks` is enabled (default `false`), checks will stop and no further action is taken.
