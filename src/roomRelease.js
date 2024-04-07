@@ -37,6 +37,8 @@ const e = cleanEnv(process.env, {
   // Graph API Options
   GRAPH_ENABLED: bool({ default: false }),
   GRAPH_STRIKES: num({ default: 3 }),
+  GRAPH_RESET_COUNT: bool({ default: true }),
+  GRAPH_RESET_WEEKS: num({ default: 5 }),
   GRAPH_CALENDAR_YEARS: num({ default: 3 }),
   // Other Parameters
   RR_TEST_MODE: bool({ default: false }),
@@ -135,27 +137,40 @@ async function processGraph(id, h, f, deviceId, email, booking) {
       // Check if Event contains a Series Master (aka part of a Series)
       if (event.seriesMasterId) {
         logger.debug(`${id}: Ghosted Booking from Series, updating Store`);
+        // Get Series Master
+        url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}`;
+        graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+        let master = await h.getHttp(id, graphHeader, url);
+        master = master.data;
         const store = await f.getStore(deviceId);
-        if (!store[event.seriesMasterId]) {
-          store[event.seriesMasterId] = {
-            strikes: 0,
+        const now = Date.now();
+        if (!store[master.id]) {
+          store[master.id] = {
+            count: 0,
+            organizer: `${master.organizer.emailAddress.name} (${master.organizer.emailAddress.address})`,
+            strikes: [],
           };
+        } else if (e.GRAPH_RESET_COUNT) {
+          const lastUpdated = new Date(store[master.id].updated);
+          const ghostThreshold = new Date(now);
+          ghostThreshold.setDate(ghostThreshold.getDate() - (e.GRAPH_RESET_WEEKS * 7));
+          if (lastUpdated < ghostThreshold) {
+            store[master.id].count = 0;
+          }
         }
-        store[event.seriesMasterId].strikes += 1;
+        store[master.id].subject = master.subject;
+        store[master.id].count += 1;
+        store[master.id].strikes.push(now);
+        store[master.id].updated = now;
         // Compare Store Strikes count against configured ENV Value (default 3)
-        if (store[event.seriesMasterId].strikes >= e.GRAPH_STRIKES) {
+        if (store[master.id].count >= e.GRAPH_STRIKES) {
           logger.debug(`${id}: Series exceeded Strike Rule - Declining`);
-          // Get Series Master
-          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}`;
-          graphHeader = [...Header, `Authorization: Bearer ${global.graphToken}`];
-          const master = await h.getHttp(id, graphHeader, url);
-          const { range } = master.data.recurrence;
-          const seriesStart = new Date(range.startDate).toISOString();
-          let seriesEnd = new Date(range.startDate);
+          const seriesStart = new Date(master.recurrence.range.startDate).toISOString();
+          let seriesEnd = new Date(master.recurrence.range.startDate);
           seriesEnd.setFullYear(seriesEnd.getFullYear() + e.GRAPH_CALENDAR_YEARS);
           seriesEnd = seriesEnd.toISOString();
           // Get Series Exceptions
-          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
+          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
           graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
           const exceptions = await h.getHttp(id, graphHeader, url);
           const exceptionArray = exceptions.data.value;
@@ -180,12 +195,12 @@ async function processGraph(id, h, f, deviceId, email, booking) {
               logger.debug(`${id}: Series exceptions declined.`);
             }
             // Decline Series Master
-            url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}/decline`;
+            url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
             graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
             await h.postHttp(id, graphHeader, url, data);
             logger.debug(`${id}: Series Declined.`);
             outcome = true;
-            delete store[event.seriesMasterId];
+            store[master.id].count = 0;
           } catch (error) {
             logger.error(`${id}: Unable to decline Series Master ${master.id}`);
             logger.debug(`${id}: ${error.message}`);
@@ -543,25 +558,22 @@ class RoomRelease {
       }
       try {
         let result;
-        if (this.o.testMode) {
+        let graph = false;
+        if (this.o.graphEnabled && this.ghost) {
+          graph = await processGraph(this.id, this.h, this.f, this.deviceId, this.email, booking);
+        }
+        if (graph) {
+          result = { status: 'Series Declined using Graph API' };
+        } else if (this.o.testMode) {
           if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
           result = { status: 'Skipped (Test Mode)' };
         } else {
-          let graph = false;
-          if (this.o.graphEnabled && this.ghost) {
-            graph = await processGraph(this.id, this.h, this.f, this.deviceId, this.email, booking);
-          }
-          if (graph) {
-            result = { status: 'Series Declined using Graph API' };
-          } else {
-            // attempt decline meeting to control hub
-            result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
-              Type: 'Decline',
-              MeetingId: booking.Booking.MeetingId,
-            });
-
-            if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
-          }
+          // attempt decline meeting to control hub
+          result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
+            Type: 'Decline',
+            MeetingId: booking.Booking.MeetingId,
+          });
+          if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
         }
         // Post content to Webex
         if (this.o.webexEnabled) {
