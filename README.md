@@ -33,7 +33,7 @@ Ghosted meetings are now checked when a meeting commences and the status include
 
 You can now optionally choose to decline a Meeting Series if multiple ghost booking occur (default `3`). This uses the Microsoft Graph API to decline the Series. A local json file is stored with container (default `/config/graph.json`, recommend attach as a volume) which tracks devices and Series which have had a ghost booking.
 
-A Ghost strike counter reset is also configurable (default enabled, set to 5 weeks) which will reset the counter back to zero if there the last ghost was before this date.
+A Ghost strike counter reset is also configurable (defaults dependant on series pattern type) which will reset the counter back to zero if there the last ghost was before this date.
 
 ## Macro Version
 Within the macro directory of this repository contains a macro version of this for individual device deployment, if preferred. As the underlying code is shared between both the macro and the Workspace Integration, it will be maintained in the same repository for consistency.
@@ -162,7 +162,10 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | GRAPH_CLIENT_SECRET | no | string | ` ` | Client Secret from MS Entra app registration
 | GRAPH_JSON | no | str | `config/graph.json` | Location of graph store JSON file
 | GRAPH_RESET_COUNT | no | bool | `true` | Allows resetting of Ghost strike counter
-| GRAPH_RESET_WEEKS | no | num | `5` | Number of weeks before resetting Ghost Strike counter
+| GRAPH_RESET_DAILY | | no | num | `8` | Daily Pattern - Days before resetting Ghost Strike counter
+| GRAPH_RESET_WEEKLY | no | num | `15` | Weekly Pattern - Days before resetting Ghost Strike counter
+| GRAPH_RESET_MONTHLY | no | num | `5` | Monthly Pattern - Weeks before resetting Ghost Strike counter
+| GRAPH_RESET_YEARLY | no | num | `13` | Yearly Pattern - Months before resetting Ghost Strike counter
 | GRAPH_CALENDAR_YEARS | no | num | `3` | Number of years ahead to search for Series Exceptions
 | **Other Parameters**
 | RR_TEST_MODE | no | bool | `false` | Used for testing, prevents the booking from being removed

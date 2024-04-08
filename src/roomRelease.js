@@ -38,7 +38,10 @@ const e = cleanEnv(process.env, {
   GRAPH_ENABLED: bool({ default: false }),
   GRAPH_STRIKES: num({ default: 3 }),
   GRAPH_RESET_COUNT: bool({ default: true }),
-  GRAPH_RESET_WEEKS: num({ default: 5 }),
+  GRAPH_RESET_DAILY: num({ default: 8 }), // Days
+  GRAPH_RESET_WEEKLY: num({ default: 15 }), // Days
+  GRAPH_RESET_MONTHLY: num({ default: 5 }), // Weeks
+  GRAPH_RESET_YEARLY: num({ default: 13 }), // Months
   GRAPH_CALENDAR_YEARS: num({ default: 3 }),
   // Other Parameters
   RR_TEST_MODE: bool({ default: false }),
@@ -153,7 +156,24 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         } else if (e.GRAPH_RESET_COUNT) {
           const lastUpdated = new Date(store[master.id].updated);
           const ghostThreshold = new Date(now);
-          ghostThreshold.setDate(ghostThreshold.getDate() - (e.GRAPH_RESET_WEEKS * 7));
+          let dateAdjustment = 0;
+          switch (master.recurrence.pattern.type) {
+            case 'daily':
+              dateAdjustment = e.GRAPH_RESET_DAILY;
+              break;
+            case 'weekly':
+              dateAdjustment = e.GRAPH_RESET_WEEKLY;
+              break;
+            case 'monthly':
+              dateAdjustment = e.GRAPH_RESET_MONTHLY * 7;
+              break;
+            case 'yearly':
+              dateAdjustment = e.GRAPH_RESET_YEARLY * 7 * 4;
+              break;
+            default:
+              dateAdjustment = 180; // default 6 months
+          }
+          ghostThreshold.setDate(ghostThreshold.getDate() - dateAdjustment);
           if (lastUpdated < ghostThreshold) {
             store[master.id].count = 0;
           }
