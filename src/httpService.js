@@ -172,6 +172,7 @@ function postGraphToken() {
     axios.request(options)
       .then((response) => {
         try {
+          response.data.expires = new Date(Date.now() + ((response.data.expires_in - 60) * 1000));
           resolve(response.data);
         } catch (error) {
           logger.debug('token not returnable');
@@ -185,4 +186,17 @@ function postGraphToken() {
       });
   });
 }
-exports.postGraphToken = postGraphToken;
+
+async function validateGraphToken() {
+  if (!global.graph) {
+    logger.info('--- Generating MS Graph Access Token');
+    global.graph = await postGraphToken();
+    return;
+  }
+  const dateFiveMinutes = new Date(Date.now() + (300 * 1000));
+  if (!global.graph || global.graph.expires < dateFiveMinutes) {
+    logger.debug('--- Refreshing MS Graph Access Token');
+    global.graph = await postGraphToken();
+  }
+}
+exports.validateGraphToken = validateGraphToken;

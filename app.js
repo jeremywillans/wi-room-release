@@ -199,9 +199,7 @@ async function init(json) {
 
   // Initialize Graph Store and verify token retrieval.
   if (e.GRAPH_ENABLED) {
-    logger.info('--- Generating MS Graph Access Token');
-    global.graph = await httpService.postGraphToken();
-    global.graph.expires = new Date(Date.now() + ((global.graph.expires_in - 60) * 1000));
+    await httpService.validateGraphToken();
     await fileService.init();
   }
 

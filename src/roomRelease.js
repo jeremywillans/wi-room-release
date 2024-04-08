@@ -117,19 +117,11 @@ const Header = [
 ];
 const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken}`];
 
-async function checkGraphToken(id, h) {
-  const dateFiveMinutes = new Date(Date.now() + (300 * 1000));
-  if (!global.graph || global.graph.expires < dateFiveMinutes) {
-    logger.debug(`${id}: Refreshing Global MS Graph Access Token`);
-    global.graph = await h.postGraphToken();
-  }
-}
-
 // Graph API Series Processing
 async function processGraph(id, h, f, deviceId, email, booking) {
   let outcome = false;
   try {
-    await checkGraphToken(id, h);
+    await h.validateGraphToken();
     const startTime = booking.Booking.Time.StartTime;
     const endTime = booking.Booking.Time.EndTime;
     let url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/calendarView?startDateTime=${startTime}&endDateTime=${endTime}`;
