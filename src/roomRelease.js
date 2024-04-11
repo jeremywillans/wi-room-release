@@ -173,7 +173,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
             store[master.id].count = 0;
           }
         }
-        store[master.id].subject = master.subject;
+          store[master.id].subject = master.subject || 'Unknown Subject';
         store[master.id].count += 1;
         store[master.id].strikes.push(now);
         store[master.id].updated = now;
