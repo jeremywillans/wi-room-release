@@ -200,7 +200,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
               for await (const exception of exceptionArray) {
                 try {
                   if (rrOptions.testMode) {
-                    if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, series exception decline skipped.`);
+                    if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series exception decline skipped.`);
                   } else {
                     const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
                     graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
@@ -215,7 +215,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
             }
             // Decline Series Master
             if (rrOptions.testMode) {
-              if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, series decline skipped.`);
+              if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series decline skipped.`);
               result = { type: 'warning', message: 'Series Decline Skipped (Test Mode)' };
             } else {
               url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
@@ -245,7 +245,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
           },
         };
         if (rrOptions.testMode) {
-          if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking end time update skipped.`);
+          if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, booking end time update skipped.`);
           result = { type: 'warning', message: 'End Update Skipped (Test Mode)' };
         } else {
           url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.id}`;
