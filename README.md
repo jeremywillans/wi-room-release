@@ -28,7 +28,7 @@ Periodic check of devices occurs every 30 minutes (on the half/hour intervals) t
 
 The process flow for how this works is included below.
 
-**0.2 Updates** 
+### 0.2 Updates 
 Ghosted meetings are now checked when a meeting commences and the status included for Webex and MS Teams outputs. 
 
 If using the Workspace Integration version, you can now optionally activate the following features 
