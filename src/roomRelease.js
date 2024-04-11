@@ -611,18 +611,20 @@ class RoomRelease {
         if (!result && this.o.testMode) {
           if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
           result = { type: 'warning', message: 'Decline Skipped (Test Mode)' };
-        } else {
+        } else if (!result) {
           // attempt decline meeting to control hub
-          const outcome = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
+          try {
+            await this.xapi.command(this.deviceId, 'Bookings.Respond', {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
-          if (outcome && outcome.status && outcome.status === 'OK') {
             result = { success: true, message: 'Booking Declined' };
-          } else {
-            result = { success: false, message: outcome };
-          }
           if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
+          } catch (error) {
+            logger.warn(`${this.id}: Booking Decline Failed.`);
+            logger.debug(`${this.id}: ${error.message}`);
+            result = { success: false, message: 'Booking Decline Failed' };
+          }
         }
         // Post content to Webex
         if (this.o.webexEnabled) {
