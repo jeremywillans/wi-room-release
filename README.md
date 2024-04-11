@@ -65,7 +65,7 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
 - A MS Teams 'Team' Channel configured with an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?#create-an-incoming-webhook)
 - Copy the Webhook URL
 
-### MS Graph - Series Decline
+### MS Graph - Series Decline and End Booking (Workspace Integration)
 - Microsoft Entra Tenant Id
 - Create a new App Registration in Microsoft Entra
   - Type: `Accounts in any organizational directory (Any Azure AD directory - Multitenant)`
@@ -74,6 +74,8 @@ By default, when a device is in MTR mode, calendaring is disabled - you either n
   - Client Secret: Generate from Certificates & secrets section - TAKE NOTE OF LIFETIME!
   - API Permissions: Graph API: Application Permissions: `Calendars.ReadWrite`
   - Admin needs to Grant Permission
+
+- (Recommended) Implement an [Application Access Policy](https://learn.microsoft.com/en-us/graph/auth-limit-mailbox-access) to restrict access to Resource Mailboxes
 
 ## Deployment (Local)
 
