@@ -143,95 +143,95 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         master = master.data;
         const store = await f.getStore(deviceId);
         if (store) {
-        if (!store[master.id]) {
-          store[master.id] = {
-            count: 0,
-            organizer: `${master.organizer.emailAddress.name} (${master.organizer.emailAddress.address})`,
-            strikes: [],
-          };
-        } else if (e.GRAPH_RESET_COUNT) {
-          const lastUpdated = new Date(store[master.id].updated);
-          const ghostThreshold = new Date(now);
-          let dateAdjustment = 0;
-          switch (master.recurrence.pattern.type) {
-            case 'daily':
-              dateAdjustment = e.GRAPH_RESET_DAILY;
-              break;
-            case 'weekly':
-              dateAdjustment = e.GRAPH_RESET_WEEKLY;
-              break;
-            case 'monthly':
-              dateAdjustment = e.GRAPH_RESET_MONTHLY * 7;
-              break;
-            case 'yearly':
-              dateAdjustment = e.GRAPH_RESET_YEARLY * 7 * 4;
-              break;
-            default:
-              dateAdjustment = 180; // default 6 months
+          if (!store[master.id]) {
+            store[master.id] = {
+              count: 0,
+              organizer: `${master.organizer.emailAddress.name} (${master.organizer.emailAddress.address})`,
+              strikes: [],
+            };
+          } else if (e.GRAPH_RESET_COUNT) {
+            const lastUpdated = new Date(store[master.id].updated);
+            const ghostThreshold = new Date(now);
+            let dateAdjustment = 0;
+            switch (master.recurrence.pattern.type) {
+              case 'daily':
+                dateAdjustment = e.GRAPH_RESET_DAILY;
+                break;
+              case 'weekly':
+                dateAdjustment = e.GRAPH_RESET_WEEKLY;
+                break;
+              case 'monthly':
+                dateAdjustment = e.GRAPH_RESET_MONTHLY * 7;
+                break;
+              case 'yearly':
+                dateAdjustment = e.GRAPH_RESET_YEARLY * 7 * 4;
+                break;
+              default:
+                dateAdjustment = 180; // default 6 months
+            }
+            ghostThreshold.setDate(ghostThreshold.getDate() - dateAdjustment);
+            if (lastUpdated < ghostThreshold) {
+              store[master.id].count = 0;
+            }
           }
-          ghostThreshold.setDate(ghostThreshold.getDate() - dateAdjustment);
-          if (lastUpdated < ghostThreshold) {
-            store[master.id].count = 0;
-          }
-        }
           store[master.id].subject = master.subject || 'Unknown Subject';
-        store[master.id].count += 1;
-        store[master.id].strikes.push(now);
-        store[master.id].updated = now;
-        // Compare Store Strikes count against configured ENV Value (default 3)
-        if (store[master.id].count >= e.GRAPH_STRIKES) {
-          logger.debug(`${id}: Series exceeded Strike Rule - Declining`);
-          const seriesStart = new Date(master.recurrence.range.startDate).toISOString();
-          let seriesEnd = new Date(master.recurrence.range.startDate);
-          seriesEnd.setFullYear(seriesEnd.getFullYear() + e.GRAPH_CALENDAR_YEARS);
-          seriesEnd = seriesEnd.toISOString();
-          // Get Series Exceptions
-          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
-          graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-          const exceptions = await h.getHttp(id, graphHeader, url);
-          const exceptionArray = exceptions.data.value;
-          const data = {
-            comment: 'Series declined by room due to exceeding Ghost Booking limit.',
-          };
-          try {
-            if (exceptionArray.length) {
-              // Process Series Exceptions first, ensuring calendar correctly shows room as declined
-              logger.debug(`${id}: Series exceptions identified, attempting individual decline first.`);
-              // eslint-disable-next-line no-restricted-syntax
-              for await (const exception of exceptionArray) {
-                try {
-                  if (rrOptions.testMode) {
-                    if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series exception decline skipped.`);
-                  } else {
-                    const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
-                    graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-                    await h.postHttp(id, graphHeader, url1, data);
+          store[master.id].count += 1;
+          store[master.id].strikes.push(now);
+          store[master.id].updated = now;
+          // Compare Store Strikes count against configured ENV Value (default 3)
+          if (store[master.id].count >= e.GRAPH_STRIKES) {
+            logger.debug(`${id}: Series exceeded Strike Rule - Declining`);
+            const seriesStart = new Date(master.recurrence.range.startDate).toISOString();
+            let seriesEnd = new Date(master.recurrence.range.startDate);
+            seriesEnd.setFullYear(seriesEnd.getFullYear() + e.GRAPH_CALENDAR_YEARS);
+            seriesEnd = seriesEnd.toISOString();
+            // Get Series Exceptions
+            url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/instances?startDateTime=${seriesStart}&endDateTime=${seriesEnd}&$filter=type eq 'exception'`;
+            graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+            const exceptions = await h.getHttp(id, graphHeader, url);
+            const exceptionArray = exceptions.data.value;
+            const data = {
+              comment: 'Series declined by room due to exceeding Ghost Booking limit.',
+            };
+            try {
+              if (exceptionArray.length) {
+                // Process Series Exceptions, first ensuring calendar shows room as declined
+                logger.debug(`${id}: Series exceptions identified, attempting individual decline first.`);
+                // eslint-disable-next-line no-restricted-syntax
+                for await (const exception of exceptionArray) {
+                  try {
+                    if (rrOptions.testMode) {
+                      if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series exception decline skipped.`);
+                    } else {
+                      const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
+                      graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+                      await h.postHttp(id, graphHeader, url1, data);
+                    }
+                  } catch (error) {
+                    logger.error(`${id}: Unable to decline series exception ${exception.id}`);
+                    logger.debug(`${id}: ${error.message}`);
                   }
-                } catch (error) {
-                  logger.error(`${id}: Unable to decline series exception ${exception.id}`);
-                  logger.debug(`${id}: ${error.message}`);
                 }
+                logger.debug(`${id}: Series exceptions declined.`);
               }
-              logger.debug(`${id}: Series exceptions declined.`);
+              // Decline Series Master
+              if (rrOptions.testMode) {
+                if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series decline skipped.`);
+                result = { type: 'warning', message: 'Series Decline Skipped (Test Mode)' };
+              } else {
+                url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
+                graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+                await h.postHttp(id, graphHeader, url, data);
+                logger.debug(`${id}: Series Declined.`);
+                result = { success: true, message: 'Series Declined using Graph API' };
+              }
+              store[master.id].count = 0;
+            } catch (error) {
+              logger.error(`${id}: Unable to decline Series Master ${master.id}`);
+              logger.debug(`${id}: ${error.message}`);
             }
-            // Decline Series Master
-            if (rrOptions.testMode) {
-              if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, series decline skipped.`);
-              result = { type: 'warning', message: 'Series Decline Skipped (Test Mode)' };
-            } else {
-              url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
-              graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-              await h.postHttp(id, graphHeader, url, data);
-              logger.debug(`${id}: Series Declined.`);
-              result = { success: true, message: 'Series declined using Graph API' };
-            }
-            store[master.id].count = 0;
-          } catch (error) {
-            logger.error(`${id}: Unable to decline Series Master ${master.id}`);
-            logger.debug(`${id}: ${error.message}`);
           }
-        }
-        f.updateStore(deviceId, store);
+          f.updateStore(deviceId, store);
         } else {
           logger.warn('No Graph Store, unable to process series.');
         }
@@ -250,12 +250,12 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         };
         if (rrOptions.testMode) {
           if (rrOptions.logDetailed) logger.info(`${id}: Test mode enabled, booking end time update skipped.`);
-          result = { type: 'warning', message: 'End Update Skipped (Test Mode)' };
+          result = { type: 'warning', message: 'End Update skipped (Test Mode)' };
         } else {
           url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.id}`;
           graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
           await h.patchHttp(id, graphHeader, url, data);
-          result = { success: true, message: 'Booking end time updated' };
+          result = { success: true, message: 'Booking End Time updated' };
         }
       }
     }
@@ -619,11 +619,11 @@ class RoomRelease {
           // attempt decline meeting to control hub
           try {
             await this.xapi.command(this.deviceId, 'Bookings.Respond', {
-            Type: 'Decline',
-            MeetingId: booking.Booking.MeetingId,
-          });
+              Type: 'Decline',
+              MeetingId: booking.Booking.MeetingId,
+            });
             result = { success: true, message: 'Booking Declined' };
-          if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
+            if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
           } catch (error) {
             logger.warn(`${this.id}: Booking Decline Failed.`);
             logger.debug(`${this.id}: ${error.message}`);
