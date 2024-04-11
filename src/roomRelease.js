@@ -142,6 +142,7 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         let master = await h.getHttp(id, graphHeader, url);
         master = master.data;
         const store = await f.getStore(deviceId);
+        if (store) {
         if (!store[master.id]) {
           store[master.id] = {
             count: 0,
@@ -231,6 +232,9 @@ async function processGraph(id, h, f, deviceId, email, booking) {
           }
         }
         f.updateStore(deviceId, store);
+        } else {
+          logger.warn('No Graph Store, unable to process series.');
+        }
       }
       // Check if End Event is enabled, and if not already processed by Series Decline
       if (e.GRAPH_END_BOOKING && !result) {
