@@ -72,6 +72,7 @@ async function init() {
       }
     }
     memStore = JSON.parse(await fs.readFile(filePath)).devices;
+    if (!memStore) throw new Error('PARSE_ERROR');
     validStore = true;
     logger.info('Graph store loaded successfully');
   } catch (error) {
