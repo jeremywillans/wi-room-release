@@ -310,7 +310,7 @@ class RoomRelease {
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
     html += `<br><strong>Organizer:</strong> ${organizer}`;
     html += `<br><strong>Ghosted:</strong> ${this.ghost ? 'Yes' : 'No'}`;
-    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown'}`;
+    html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime).toString().replace(/(.*) \(.*/, '$1') : 'Unknown'}`;
     html += `<br><strong>Release Result:</strong> ${outcome.message ? outcome.message : 'Unknown'}`;
 
     const messageContent = { roomId: this.o.webexRoomId, html };
@@ -381,7 +381,7 @@ class RoomRelease {
                   },
                   {
                     title: 'Start Time',
-                    value: Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown',
+                    value: Booking.Time ? new Date(Booking.Time.StartTime).toString().replace(/(.*) \(.*/, '$1') : 'Unknown',
                   },
                   {
                     title: 'Release Result',
