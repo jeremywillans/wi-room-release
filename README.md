@@ -31,9 +31,10 @@ The process flow for how this works is included below.
 **0.2 Updates** 
 Ghosted meetings are now checked when a meeting commences and the status included for Webex and MS Teams outputs. 
 
-You can now optionally choose to decline a Meeting Series if multiple ghost booking occur (default `3`). This uses the Microsoft Graph API to decline the Series. A local json file is stored with container (default `/config/graph.json`, recommend attach as a volume) which tracks devices and Series which have had a ghost booking.
+If using the Workspace Integration version, you can now optionally activate the following features 
+- Update Booking End Time - instead of declining the meeting, this will simply update the end time to the most recent 5 minute interval. This allows better reflection of the calendar usage.
 
-A Ghost strike counter reset is also configurable (defaults dependant on series pattern type) which will reset the counter back to zero if there the last ghost was before this date.
+- Decline a Meeting Series (following a strike policy) - You can choose to decline a Meeting Series if multiple ghost booking occur (default `3`). This uses the Microsoft Graph API to decline the Series. A local json file is stored with container (default `/config/graph.json`, recommend attach as a volume) which tracks devices and Series which have had a ghost booking. A Ghost strike counter reset is also configurable (defaults dependant on series pattern type) which will reset the counter back to zero if there the last ghost was before this date.
 
 ## Macro Version
 Within the macro directory of this repository contains a macro version of this for individual device deployment, if preferred. As the underlying code is shared between both the macro and the Workspace Integration, it will be maintained in the same repository for consistency.
@@ -154,8 +155,10 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | **Teams Notification Options**
 | RR_TEAMS_ENABLED | no | bool | `false` | Send message to MS Teams channel when room released
 | RR_TEAMS_WEBHOOK | no | string | ` ` | URL for Teams Channel Incoming Webhook
-| **Graph API Options**
-| GRAPH_ENABLED | no | string | ` ` |  Track series ghost bookings, decline if exceeds strike threshold
+| **Graph API Options (Workspace Integration)**
+| GRAPH_ENABLED | no | bool | `false` | Enables services provided by MS Graph API 
+| GRAPH_SERIES_DECLINE | no | bool | `false` | Track series ghost bookings, decline if exceeds strike threshold
+| GRAPH_END_BOOKING | no | bool | `false` | Update mailbox booking end time instead of declining
 | GRAPH_STRIKES | no | num | `3` | Number of ghost bookings before the series is declined
 | GRAPH_TENANT | no | string | ` ` | Tenant ID from MS Entra app registration
 | GRAPH_CLIENT_ID | no | string | ` ` | Client ID from MS Entra app registration

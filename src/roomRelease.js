@@ -36,6 +36,8 @@ const e = cleanEnv(process.env, {
   RR_TEAMS_WEBHOOK: str({ default: undefined }),
   // Graph API Options
   GRAPH_ENABLED: bool({ default: false }),
+  GRAPH_SERIES_DECLINE: bool({ default: true }),
+  GRAPH_END_BOOKING: bool({ default: false }),
   GRAPH_STRIKES: num({ default: 3 }),
   GRAPH_RESET_COUNT: bool({ default: true }),
   GRAPH_RESET_DAILY: num({ default: 8 }), // Days
@@ -103,6 +105,7 @@ const rrOptions = {
 
   // Graph API Options
   graphEnabled: e.GRAPH_ENABLED, // Track series ghost bookings, decline if exceeds strike threshold
+  graphEndBooking: e.GRAPH_END_BOOKING, // Update mailbox booking end time instead of declining
 
   // Other Parameters
   testMode: e.RR_TEST_MODE, // used for testing, prevents the booking from being removed
@@ -119,7 +122,7 @@ const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken
 
 // Graph API Series Processing
 async function processGraph(id, h, f, deviceId, email, booking) {
-  let outcome = false;
+  let result = false;
   try {
     await h.validateGraphToken();
     const startTime = booking.Booking.Time.StartTime;
@@ -129,8 +132,9 @@ async function processGraph(id, h, f, deviceId, email, booking) {
     let event = await h.getHttp(id, graphHeader, url);
     if (event.data && event.data.value && event.data.value.length === 1) {
       [event] = event.data.value;
+      const now = Date.now();
       // Check if Event contains a Series Master (aka part of a Series)
-      if (event.seriesMasterId) {
+      if (e.GRAPH_SERIES_DECLINE && booking.ghost && event.seriesMasterId) {
         logger.debug(`${id}: Ghosted Booking from Series, updating Store`);
         // Get Series Master
         url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}`;
@@ -138,7 +142,6 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         let master = await h.getHttp(id, graphHeader, url);
         master = master.data;
         const store = await f.getStore(deviceId);
-        const now = Date.now();
         if (!store[master.id]) {
           store[master.id] = {
             count: 0,
@@ -196,9 +199,13 @@ async function processGraph(id, h, f, deviceId, email, booking) {
               // eslint-disable-next-line no-restricted-syntax
               for await (const exception of exceptionArray) {
                 try {
-                  const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
-                  graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-                  await h.postHttp(id, graphHeader, url1, data);
+                  if (rrOptions.testMode) {
+                    if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, series exception decline skipped.`);
+                  } else {
+                    const url1 = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${exception.id}/decline`;
+                    graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+                    await h.postHttp(id, graphHeader, url1, data);
+                  }
                 } catch (error) {
                   logger.error(`${id}: Unable to decline series exception ${exception.id}`);
                   logger.debug(`${id}: ${error.message}`);
@@ -207,11 +214,16 @@ async function processGraph(id, h, f, deviceId, email, booking) {
               logger.debug(`${id}: Series exceptions declined.`);
             }
             // Decline Series Master
-            url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
-            graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-            await h.postHttp(id, graphHeader, url, data);
-            logger.debug(`${id}: Series Declined.`);
-            outcome = true;
+            if (rrOptions.testMode) {
+              if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, series decline skipped.`);
+              result = { type: 'warning', message: 'Series Decline Skipped (Test Mode)' };
+            } else {
+              url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${master.id}/decline`;
+              graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+              await h.postHttp(id, graphHeader, url, data);
+              logger.debug(`${id}: Series Declined.`);
+              result = { success: true, message: 'Series declined using Graph API' };
+            }
             store[master.id].count = 0;
           } catch (error) {
             logger.error(`${id}: Unable to decline Series Master ${master.id}`);
@@ -220,12 +232,34 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         }
         f.updateStore(deviceId, store);
       }
+      // Check if End Event is enabled, and if not already processed by Series Decline
+      if (e.GRAPH_END_BOOKING && !result) {
+        const dateTime = new Date(now);
+        dateTime.setMinutes(5 * Math.floor(dateTime.getMinutes() / 5));
+        dateTime.setSeconds(0);
+        dateTime.setMilliseconds(0);
+        const data = {
+          end: {
+            dateTime,
+            timeZone: 'UTC',
+          },
+        };
+        if (rrOptions.testMode) {
+          if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking end time update skipped.`);
+          result = { type: 'warning', message: 'End Update Skipped (Test Mode)' };
+        } else {
+          url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.id}`;
+          graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
+          await h.patchHttp(id, graphHeader, url, data);
+          result = { success: true, message: 'Booking end time updated' };
+        }
+      }
     }
   } catch (error) {
     logger.error(`${id}: Error interacting with Graph API`);
     logger.debug(`${id}: ${error.message}`);
   }
-  return outcome;
+  return result;
 }
 
 // Room Release Class - Instantiated per Device
@@ -266,10 +300,10 @@ class RoomRelease {
   }
 
   // Post content to Webex Space
-  async postWebex(booking, decline) {
+  async postWebex(booking, outcome) {
     if (this.o.logDetailed) logger.debug(`${this.id}: Process postWebex function`);
     const { Booking } = booking;
-    const blockquote = decline.status === 'OK' ? 'success' : 'warning';
+    const blockquote = outcome.success ? 'success' : 'warning';
 
     let html = (`<strong>Room Release Notification</strong><blockquote class=${blockquote}><strong>System Name:</strong> ${this.sysInfo.name}<br><strong>Serial Number:</strong> ${this.sysInfo.serial}<br><strong>Platform:</strong> ${this.sysInfo.platform}`);
     let organizer = 'Unknown';
@@ -277,7 +311,7 @@ class RoomRelease {
     html += `<br><strong>Organizer:</strong> ${organizer}`;
     html += `<br><strong>Ghosted:</strong> ${this.ghost ? 'Yes' : 'No'}`;
     html += `<br><strong>Start Time:</strong> ${Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown'}`;
-    html += `<br><strong>Decline Status:</strong> ${decline.status ? decline.status : 'Unknown'}`;
+    html += `<br><strong>Release Result:</strong> ${outcome.message ? outcome.message : 'Unknown'}`;
 
     const messageContent = { roomId: this.o.webexRoomId, html };
 
@@ -298,10 +332,10 @@ class RoomRelease {
   }
 
   // Post content to MS Teams Channel
-  async postTeams(booking, decline) {
+  async postTeams(booking, outcome) {
     if (this.o.logDetailed) logger.debug(`${this.id}: Process postTeams function`);
     const { Booking } = booking;
-    const color = decline.status === 'OK' ? 'Good' : 'Warning';
+    const color = outcome.success ? 'Good' : 'Warning';
     let organizer = 'Unknown';
     if (Booking.Organizer) { organizer = Booking.Organizer.LastName !== '' ? `${Booking.Organizer.FirstName} ${Booking.Organizer.LastName}` : Booking.Organizer.FirstName; }
 
@@ -350,8 +384,8 @@ class RoomRelease {
                     value: Booking.Time ? new Date(Booking.Time.StartTime).toString() : 'Unknown',
                   },
                   {
-                    title: 'Decline Status',
-                    value: decline.status ? decline.status : 'Unknown',
+                    title: 'Release Result',
+                    value: outcome.message ? outcome.message : 'Unknown',
                   },
                 ],
               },
@@ -569,22 +603,25 @@ class RoomRelease {
         return;
       }
       try {
-        let result;
-        let graph = false;
-        if (this.o.graphEnabled && this.ghost) {
-          graph = await processGraph(this.id, this.h, this.f, this.deviceId, this.email, booking);
+        let result = false;
+        if (this.o.graphEnabled && (this.ghost || this.o.graphEndBooking)) {
+          booking.ghost = this.ghost;
+          result = await processGraph(this.id, this.h, this.f, this.deviceId, this.email, booking);
         }
-        if (graph) {
-          result = { status: 'Series Declined using Graph API' };
-        } else if (this.o.testMode) {
+        if (!result && this.o.testMode) {
           if (this.o.logDetailed) logger.info(`${this.id}: Test mode enabled, booking decline skipped.`);
-          result = { status: 'Skipped (Test Mode)' };
+          result = { type: 'warning', message: 'Decline Skipped (Test Mode)' };
         } else {
           // attempt decline meeting to control hub
-          result = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
+          const outcome = await this.xapi.command(this.deviceId, 'Bookings.Respond', {
             Type: 'Decline',
             MeetingId: booking.Booking.MeetingId,
           });
+          if (outcome && outcome.status && outcome.status === 'OK') {
+            result = { success: true, message: 'Booking Declined' };
+          } else {
+            result = { success: false, message: outcome };
+          }
           if (this.o.logDetailed) logger.debug(`${this.id}: Booking declined.`);
         }
         // Post content to Webex

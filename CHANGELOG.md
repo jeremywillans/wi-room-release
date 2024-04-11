@@ -2,7 +2,8 @@
 
 ## 0.2.0
 - Ghosted meeting status check
-- Series Decline support using MS Graph API
+- Series Decline support using MS Graph API (WI only)
+- Update Meeting end time instead of decline using MS Graph API (WI only)
 - Fix periodic check cron timer
 - Bump deps
 

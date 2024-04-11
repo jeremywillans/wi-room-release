@@ -109,6 +109,54 @@ function postHttp(id, headerArray, url, data) {
 }
 exports.postHttp = postHttp;
 
+function patchHttp(id, headerArray, url, data) {
+  return new Promise((resolve, reject) => {
+    const headers = headerArray.reduce((acc, cur) => {
+      const a = cur.split(': ');
+      [, acc[a[0]]] = a;
+      return acc;
+    }, {});
+    const options = {
+      method: 'PATCH',
+      url,
+      headers,
+      data,
+      json: true,
+    };
+
+    axios
+      .request(options)
+      .then((response) => {
+        // RoomOS HTTP Client Interop
+        response.StatusCode = response.status;
+        if (response.status === 204) {
+          logger.debug('patchHttp noContent');
+          resolve(response);
+          return;
+        }
+        if (response.status === 202) {
+          logger.debug('patchHttp Accepted');
+          resolve(response);
+          return;
+        }
+        // Parse Response
+        if (!response.data) {
+          logger.debug(`${id}: could not parse data: bad or invalid json payload.`);
+          reject(response);
+        }
+        resolve(response);
+      })
+      .catch((error) => {
+        logger.debug(`${id}: patchHttp error: ${error.message}`);
+        if (error.response && error.response.headers.trackingid) {
+          logger.debug(`${id}: tid: ${error.response.headers.trackingid}`);
+        }
+        reject(error);
+      });
+  });
+}
+exports.patchHttp = patchHttp;
+
 function getHttp(id, headerArray, url) {
   const headers = headerArray.reduce((acc, cur) => {
     const a = cur.split(': ');
