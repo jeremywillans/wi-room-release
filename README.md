@@ -167,7 +167,7 @@ These variables can be individually defined in Docker, or loaded as an `.env` fi
 | GRAPH_CLIENT_SECRET | no | string | ` ` | Client Secret from MS Entra app registration
 | GRAPH_JSON | no | str | `config/graph.json` | Location of graph store JSON file
 | GRAPH_RESET_COUNT | no | bool | `true` | Allows resetting of Ghost strike counter
-| GRAPH_RESET_DAILY | | no | num | `8` | Daily Pattern - Days before resetting Ghost Strike counter
+| GRAPH_RESET_DAILY | no | num | `8` | Daily Pattern - Days before resetting Ghost Strike counter
 | GRAPH_RESET_WEEKLY | no | num | `15` | Weekly Pattern - Days before resetting Ghost Strike counter
 | GRAPH_RESET_MONTHLY | no | num | `5` | Monthly Pattern - Weeks before resetting Ghost Strike counter
 | GRAPH_RESET_YEARLY | no | num | `13` | Yearly Pattern - Months before resetting Ghost Strike counter
