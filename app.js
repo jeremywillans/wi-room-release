@@ -194,7 +194,7 @@ async function init(json) {
     await processDevices(i, d);
 
     // Periodically re-process devices to capture tag changes (every 30 mins)
-    schedule.scheduleJob('*/2 * * * *', async () => {
+    schedule.scheduleJob('*/30 * * * *', async () => {
       logger.info('--- Periodic Device Processing');
       await processDevices(i, d);
     });
