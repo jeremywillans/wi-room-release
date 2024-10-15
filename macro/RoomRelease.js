@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 /* eslint-disable no-console */
 /*
 # Room Release Macro
@@ -17,6 +18,7 @@ import xapi from 'xapi';
 const version = '0.1.0';
 
 const rrOptions = {
+  appName: 'RoomRelease', // App Name used for Button Id
   // Occupancy Detections
   roomInUse: true, // leverage new consolidated metric to determine occupancy status
 
@@ -37,6 +39,7 @@ const rrOptions = {
   emptyBeforeRelease: 5, // (Mins) time empty until prompt for release
   initialReleaseDelay: 10, // (Mins) initial delay before prompt for release
   ignoreLongerThan: 5, // (Hrs) meetings longer than this will be skipped
+  buttonCheckoutLong: true, // Adds a manual checkout button for long (ignored) meetings
   promptDuration: 60, // (Secs) display prompt time before room declines invite
   periodicInterval: 1, // (Mins) duration to perform periodic occupancy checks
 
@@ -78,6 +81,7 @@ const Header = [
   'Accept: application/json',
 ];
 const webexHeader = [...Header, `Authorization: Bearer ${rrOptions.webexBotToken}`];
+const buttonId = `${rrOptions.appName}-button-${version.replaceAll('.', '')}`;
 
 // ----- EDIT BELOW THIS LINE AT OWN RISK ----- //
 
@@ -99,7 +103,6 @@ class RoomRelease {
     this.lastFullTimestamp = 0;
     this.lastEmptyTimestamp = 0;
     this.initialDelay = 0;
-    this.isRoomOS = false;
     this.metrics = {
       peopleCount: 0,
       peoplePresence: false,
@@ -108,6 +111,36 @@ class RoomRelease {
       sharing: false,
     };
     this.sysInfo = {};
+  }
+
+  // Remove UI Elements
+  async removePanel(PanelId, showLog = false) {
+    if (this.o.logDetailed && showLog) console.debug(`Removing Panel: ${PanelId}`);
+    try {
+      await this.xapi.command('UserInterface.Extensions.Panel.Remove', { PanelId });
+    } catch (error) {
+      console.error('Unable to remove Panel');
+      console.debug(error.message);
+    }
+  }
+
+  // Add Button to Codec
+  async addButton() {
+    if (this.o.logDetailed) console.debug(`Adding Check Out Button: ${buttonId}`);
+    const xml = `<?xml version="1.0"?>
+    <Extensions>
+      <Version>1.11</Version>
+      <Panel>
+        <Order>1</Order>
+        <PanelId>${buttonId}</PanelId>
+        <Location>${this.sysInfo.isRoomOS ? 'HomeScreen' : 'ControlPanel'}</Location>
+        <Icon>Concierge</Icon>
+        <Color>#1170CF</Color>
+        <Name>Check Out</Name>
+        <ActivityType>Custom</ActivityType>
+      </Panel>
+    </Extensions>`;
+    await this.xapi.command('UserInterface.Extensions.Panel.Save', { PanelId: buttonId }, xml);
   }
 
   // Post content to Webex Space
@@ -287,14 +320,13 @@ class RoomRelease {
       // verify supported version
       if (!versionCheck(this.sysInfo.version)) throw new Error('Unsupported RoomOS');
       // Determine device mode
-      // eslint-disable-next-line no-nested-ternary
-      const mtrSupported = /^true$/i.test(systemUnit.Extensions ? systemUnit.Extensions.Microsoft ? systemUnit.Extensions.Microsoft.Supported : false : false);
-      if (mtrSupported) {
+      try {
         const mtrStatus = await this.xapi.command('MicrosoftTeams.List');
-        this.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
-        if (!this.isRoomOS) { console.info('Device in Microsoft Mode'); }
-        // verify supported mtr version
-        if (!this.isRoomOS && !versionCheck(this.sysInfo.version, '11.14.0.0')) throw new Error('Unsupported MTR RoomOS');
+        this.sysInfo.isRoomOS = !mtrStatus.Entry.some((i) => i.Status === 'Installed');
+        if (!this.sysInfo.isRoomOS) { console.info('Device in Microsoft Mode'); }
+      } catch (error) {
+        // Device does not support MTR
+        this.sysInfo.isRoomOS = true;
       }
       // Get System Name / Contact Name
       this.sysInfo.name = await this.xapi.status.get('UserInterface.ContactInfo.Name');
@@ -343,6 +375,62 @@ class RoomRelease {
     return currentStatus;
   }
 
+  async processDecline(manualCheckout = false) {
+    // We get the updated meetingId to send meeting decline
+    let booking;
+    let bookingId;
+    try {
+      // get webex booking id for current booking on codec
+      bookingId = await this.xapi.status.get('Bookings.Current.Id');
+      if (this.o.logDetailed) console.debug(`retrieved booking id: ${bookingId}`);
+      if (!bookingId) {
+        console.warn(`${bookingId} unable to retrieve current booking id! aborting decline`);
+        return;
+      }
+      // use booking id to retrieve booking data, specifically meeting id
+      booking = await this.xapi.command('Bookings.Get', { Id: bookingId });
+      if (this.o.logDetailed) console.debug(`${bookingId} contains ${booking.Booking.MeetingId}`);
+    } catch (error) {
+      console.error(`Unable to retrieve meeting info for ${bookingId}`);
+      console.debug(error.message);
+      return;
+    }
+    try {
+      let result;
+      if (this.o.testMode) {
+        if (this.o.logDetailed) console.info('Test mode enabled, booking decline skipped.');
+        result = { status: 'Skipped (Test Mode)' };
+      } else {
+        // attempt decline meeting to control hub
+        result = await this.xapi.command('Bookings.Respond', {
+          Type: 'Decline',
+          MeetingId: booking.Booking.MeetingId,
+        });
+
+        if (this.o.logDetailed) console.debug('Booking declined.');
+      }
+      if (!manualCheckout) {
+        // Post content to Webex
+        if (this.o.webexEnabled) {
+          this.postWebex(booking, result);
+        }
+        // Post content to MS Teams
+        if (this.o.teamsEnabled) {
+          this.postTeams(booking, result);
+        }
+      }
+    } catch (error) {
+      console.error(`Unable to respond to meeting ${booking.Booking.MeetingId}`);
+      console.debug(error.message);
+    }
+    this.bookingIsActive = false;
+    this.lastFullTimestamp = 0;
+    this.lastEmptyTimestamp = 0;
+    this.roomIsEmpty = false;
+    this.countdownActive = false;
+    this.removePanel(buttonId);
+  }
+
   // Countdown timer before meeting decline
   startCountdown() {
     // secondary check to ensure no existing timer is active
@@ -379,56 +467,8 @@ class RoomRelease {
       this.xapi.command('UserInterface.Message.TextLine.Clear').catch(() => {});
       clearInterval(this.periodicUpdate);
 
-      // We get the updated meetingId to send meeting decline
-      let booking;
-      let bookingId;
-      try {
-        // get webex booking id for current booking on codec
-        bookingId = await this.xapi.status.get('Bookings.Current.Id');
-        if (this.o.logDetailed) console.debug(`retrieved booking id: ${bookingId}`);
-        if (!bookingId) {
-          console.warn(`${bookingId} unable to retrieve current booking id! aborting decline`);
-          return;
-        }
-        // use booking id to retrieve booking data, specifically meeting id
-        booking = await this.xapi.command('Bookings.Get', { Id: bookingId });
-        if (this.o.logDetailed) console.debug(`${bookingId} contains ${booking.Booking.MeetingId}`);
-      } catch (error) {
-        console.error(`Unable to retrieve meeting info for ${bookingId}`);
-        console.debug(error.message);
-        return;
-      }
-      try {
-        let result;
-        if (this.o.testMode) {
-          if (this.o.logDetailed) console.info('Test mode enabled, booking decline skipped.');
-          result = { status: 'Skipped (Test Mode)' };
-        } else {
-          // attempt decline meeting to control hub
-          result = await this.xapi.command('Bookings.Respond', {
-            Type: 'Decline',
-            MeetingId: booking.Booking.MeetingId,
-          });
-
-          if (this.o.logDetailed) console.debug('Booking declined.');
-        }
-        // Post content to Webex
-        if (this.o.webexEnabled) {
-          this.postWebex(booking, result);
-        }
-        // Post content to MS Teams
-        if (this.o.teamsEnabled) {
-          this.postTeams(booking, result);
-        }
-      } catch (error) {
-        console.error(`Unable to respond to meeting ${booking.Booking.MeetingId}`);
-        console.debug(error.message);
-      }
-      this.bookingIsActive = false;
-      this.lastFullTimestamp = 0;
-      this.lastEmptyTimestamp = 0;
-      this.roomIsEmpty = false;
-      this.countdownActive = false;
+      // Process Meeting Decline
+      this.processDecline();
     }, this.o.promptDuration * 1000);
   }
 
@@ -452,7 +492,7 @@ class RoomRelease {
         return;
       }
       const metricArray = [this.getData('RoomAnalytics.*')];
-      if (this.isRoomOS) {
+      if (this.sysInfo.isRoomOS) {
         metricArray.push(this.getData('SystemUnit.State.NumberOfActiveCalls'));
       } else {
         metricArray.push(this.getData('MicrosoftTeams.Calling.InCall'));
@@ -463,7 +503,7 @@ class RoomRelease {
       const presence = results[0].PeoplePresence === 'Yes';
       const peopleCount = Number(results[0].PeopleCount.Current);
       const soundResult = Number(results[0].Sound.Level.A);
-      const activeCall = this.isRoomOS ? Number(results[1]) > 0 : /^true$/i.test(results[1]);
+      const activeCall = this.sysInfo.isRoomOS ? Number(results[1]) > 0 : /^true$/i.test(results[1]);
 
       // test for local sharing xapi
       const sharing = await this.getData('Conference.Presentation.LocalInstance');
@@ -574,6 +614,9 @@ class RoomRelease {
           if (this.o.logDetailed) console.debug(`meeting ignored as equal/longer than ${this.o.ignoreLongerThan} hours`);
           this.listenerShouldCheck = false;
           this.bookingIsActive = false;
+          if (this.o.buttonCheckoutLong) {
+            this.addButton(buttonId, false);
+          }
           return;
         }
 
@@ -634,6 +677,7 @@ class RoomRelease {
     this.initialDelay = 0;
     this.lastFullTimestamp = 0;
     this.lastEmptyTimestamp = 0;
+    this.removePanel(buttonId);
   }
 
   handleActiveCall(status) {
@@ -737,6 +781,20 @@ class RoomRelease {
       }
     }
   }
+
+  handlePanelClicked(event) {
+    if (event.PanelId === buttonId) {
+      this.processDecline(true);
+    }
+  }
+
+  handleMacroReset(event) {
+    if (event.Name === _main_macro_name()) {
+      // Close any lingering dialogs and remove UI extensions
+      this.xapi.command('UserInterface.Message.Prompt.Clear');
+      this.removePanel(buttonId);
+    }
+  }
 }
 
 // Init function
@@ -780,6 +838,10 @@ async function init() {
     xapi.event.on('UserInterface.Message.Prompt.Response', (event) => {
       sys.handlePromptResponse(event);
     });
+    // Handle panel clicked event
+    xapi.event.on('UserInterface.Extensions.Panel.Clicked', (event) => {
+      sys.handlePanelClicked(event);
+    });
     // Process active call
     xapi.status.on('SystemUnit.State.NumberOfActiveCalls', (status) => {
       sys.handleActiveCall(status);
@@ -808,9 +870,27 @@ async function init() {
     xapi.status.on('RoomAnalytics.RoomInUse', (status) => {
       sys.handleRoomInUse(status);
     });
+    // Handle macro save
+    xapi.event.on('Macros.Macro.Saved', (event) => {
+      console.info('Remove Button for Macro Reload');
+      sys.handleMacroReset(event);
+    });
+    // Handle macro deactivated
+    xapi.event.on('Macros.Macro.Deactivated', (event) => {
+      console.info('Remove Button for Macro Deactivation');
+      sys.handleMacroReset(event);
+    });
+    // Handle macro save event
+    xapi.event.on('Macros.Macro.Removed', (event) => {
+      console.info('Remove Button for Macro Deletion');
+      sys.handleMacroReset(event);
+    });
   } catch (error) {
     console.error('Error during device and subscription processing');
-    console.debug(error.message);
+    console.debug(error.message ? error.message : error);
+    const Name = _main_macro_name();
+    xapi.command('Macros.Macro.Deactivate', { Name });
+    console.error(`Macro ${Name} deactivated.`);
   }
 }
 
