@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.1
+- Add Checkout button option when meetings are ignored (longer than 5 hours by default)
+
 ## 0.1.0
 - MTR Support (requires RoomOS 11.14+)
 - MS Teams notification support

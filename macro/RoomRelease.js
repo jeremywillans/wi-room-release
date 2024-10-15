@@ -15,7 +15,7 @@
 // eslint-disable-next-line import/no-unresolved
 import xapi from 'xapi';
 
-const version = '0.1.0';
+const version = '0.1.1';
 
 const rrOptions = {
   appName: 'RoomRelease', // App Name used for Button Id
