@@ -129,9 +129,9 @@ async function processGraph(id, h, f, deviceId, email, booking) {
     const endTime = booking.Booking.Time.EndTime;
     let url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/calendarView?startDateTime=${startTime}&endDateTime=${endTime}`;
     let graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-    let event = await h.getHttp(id, graphHeader, url);
-    if (event.data && event.data.value && event.data.value.length === 1) {
-      [event] = event.data.value;
+    const response = await h.getHttp(id, graphHeader, url);
+    if (response.data && response.data.value && response.data.value.length === 1) {
+      const [event] = response.data.value;
       const now = Date.now();
       // Check if Event contains a Series Master (aka part of a Series)
       if (e.GRAPH_SERIES_DECLINE && booking.ghost && event.seriesMasterId) {
@@ -139,8 +139,8 @@ async function processGraph(id, h, f, deviceId, email, booking) {
         // Get Series Master
         url = `https://graph.microsoft.com/v1.0/users/${email}/calendar/events/${event.seriesMasterId}`;
         graphHeader = [...Header, `Authorization: Bearer ${global.graph.access_token}`];
-        let master = await h.getHttp(id, graphHeader, url);
-        master = master.data;
+        const masterResponse = await h.getHttp(id, graphHeader, url);
+        const master = masterResponse.data;
         const store = await f.getStore(deviceId);
         if (store) {
           if (!store[master.id]) {
