@@ -5,7 +5,7 @@ RUN mkdir -p /app
 WORKDIR /app
 
 # Set NODE_ENV to production
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Bundle package dependencies
 COPY package*.json /app/
