@@ -580,7 +580,7 @@ class RoomRelease {
         try {
           const t = booking.Booking.Time;
           startTime = Date.parse(t.StartTime);
-          duration = ((Number(t.SecondsUntilEnd) + Number(t.SecondsSinceStart)) / 3600).toFixed(2);
+          duration = (Date.parse(t.EndTime) - startTime) / (1000 * 60 * 60);
         } catch (error) {
           console.warn('Unable to parse Meeting Length');
           console.debug(error.message);
